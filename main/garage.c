@@ -29,7 +29,7 @@
 
 #define DOOR_SENSOR "\x0a" \
                     "Door Sensor"
-// #define BLINK_GPIO 15
+#define BLINK_GPIO 15
 
 static const char *TAG = "ESP_ZB_GARAGE";
 /********************* Define functions **************************/
@@ -58,6 +58,7 @@ static switch_func_pair_t button_func_pair[] = {
 //         ESP_EARLY_LOGI(TAG, "Send 'on_off toggle' command");
 //     }
 // }
+
 static void zb_buttons_handler(switch_func_pair_t *button_func_pair)
 {
     if (button_func_pair->func == SWITCH_ONOFF_TOGGLE_CONTROL)
@@ -65,25 +66,41 @@ static void zb_buttons_handler(switch_func_pair_t *button_func_pair)
         // Toggle the binary sensor state
         static bool sensor_state = false;
         sensor_state = !sensor_state;
+
         esp_zb_lock_acquire(portMAX_DELAY);
+
+        // Update the attribute value
         esp_zb_zcl_set_attribute_val(HA_ONOFF_SWITCH_ENDPOINT,
                                      ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
                                      ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                                      ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
                                      &sensor_state, false);
+
+        // Report the attribute change to the coordinator (Home Assistant)
+        esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
+            .zcl_basic_cmd = {
+                .src_endpoint = HA_ONOFF_SWITCH_ENDPOINT,
+            },
+            .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
+            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
+            .attributeID = ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
+            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
+        };
+        esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd);
+
         esp_zb_lock_release();
 
         ESP_EARLY_LOGI(TAG, "Binary sensor state: %s", sensor_state ? "On" : "Off");
     }
 }
 
-// static void configure_led(void)
-// {
-//     ESP_LOGI(TAG, "Example configured to blink GPIO LED!");
-//     gpio_reset_pin(BLINK_GPIO);
-//     /* Set the GPIO as a push/pull output */
-//     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
-// }
+static void configure_led(void)
+{
+    ESP_LOGI(TAG, "Example configured to blink GPIO LED!");
+    gpio_reset_pin(BLINK_GPIO);
+    /* Set the GPIO as a push/pull output */
+    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+}
 
 static esp_err_t deferred_driver_init(void)
 {
@@ -315,7 +332,6 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
 static void esp_zb_task(void *pvParameters)
 {
     /* initialize Zigbee stack */
-
     esp_zb_cfg_t zb_nwk_cfg = ESP_ZB_ZED_CONFIG();
     esp_zb_init(&zb_nwk_cfg);
 
@@ -324,22 +340,24 @@ static void esp_zb_task(void *pvParameters)
         .model_identifier = ESP_MODEL_IDENTIFIER,
     };
 
-    // esp_zb_on_off_light_cfg_t light_cfg = ESP_ZB_DEFAULT_ON_OFF_LIGHT_CONFIG();
-    // esp_zb_ep_list_t *esp_zb_on_off_light_ep = esp_zb_on_off_light_ep_create(HA_ESP_LIGHT_ENDPOINT, &light_cfg);
-    // esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_on_off_light_ep, HA_ESP_LIGHT_ENDPOINT, &info);
-    // esp_zb_device_register(esp_zb_on_off_light_ep);
+    // Create a single endpoint list with both endpoints
+    esp_zb_ep_list_t *esp_zb_ep_list = esp_zb_ep_list_create();
 
-    // esp_zb_on_off_switch_cfg_t switch_cfg = ESP_ZB_DEFAULT_ON_OFF_SWITCH_CONFIG();
-    // esp_zb_ep_list_t *esp_zb_on_off_switch_ep = esp_zb_on_off_switch_ep_create(HA_ONOFF_SWITCH_ENDPOINT, &switch_cfg);
-    // esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_on_off_switch_ep, HA_ONOFF_SWITCH_ENDPOINT, &info);
-    // esp_zb_device_register(esp_zb_on_off_switch_ep);
+    esp_zb_ep_on_off_light_cfg_t light_cfg = ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(HA_ESP_LIGHT_ENDPOINT);
+    garage_on_off_light_ep_create(esp_zb_ep_list, &light_cfg);
 
-    // Create binary sensor configuration
-    static char garage_door_name[] = "Garage Door";
-    esp_zb_binary_sensor_cfg_t sensor_cfg = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(garage_door_name);
-    esp_zb_ep_list_t *esp_zb_binary_sensor_ep = esp_zb_binary_sensor_ep_create(HA_ONOFF_SWITCH_ENDPOINT, &sensor_cfg);
-    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_binary_sensor_ep, HA_ONOFF_SWITCH_ENDPOINT, &info);
-    esp_zb_device_register(esp_zb_binary_sensor_ep);
+    // Create binary sensor endpoint
+    static char garage_door_name[] = "\x0b"
+                                     "Garage Door";
+    esp_zb_binary_sensor_cfg_t sensor_cfg = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_ONOFF_SWITCH_ENDPOINT, garage_door_name);
+    garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg);
+
+    // Add manufacturer info to both endpoints
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ESP_LIGHT_ENDPOINT, &info);
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ONOFF_SWITCH_ENDPOINT, &info);
+
+    // Register the single device with both endpoints
+    esp_zb_device_register(esp_zb_ep_list);
 
     // Register device and start Zigbee stack
     esp_zb_core_action_handler_register(zb_action_handler);
@@ -350,7 +368,7 @@ static void esp_zb_task(void *pvParameters)
 
 void app_main(void)
 {
-    // configure_led();
+    configure_led();
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config = ESP_ZB_DEFAULT_HOST_CONFIG(),

@@ -38,32 +38,58 @@
 #pragma once
 
 #include <stdbool.h>
+#include "esp_zigbee_type.h"
+#include "ha/esp_zigbee_ha_standard.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 /* light intensity level */
-#define LIGHT_DEFAULT_ON  1
+#define LIGHT_DEFAULT_ON 1
 #define LIGHT_DEFAULT_OFF 0
 
 /* LED strip configuration */
-#define CONFIG_EXAMPLE_STRIP_LED_GPIO   8
+#define CONFIG_EXAMPLE_STRIP_LED_GPIO 8
 #define CONFIG_EXAMPLE_STRIP_LED_NUMBER 1
 
-/**
-* @brief Set light power (on/off).
-*
-* @param  power  The light power to be set
-*/
-void light_driver_set_power(bool power);
+    // Extended config struct that includes endpoint configuration
+    typedef struct
+    {
+        esp_zb_on_off_light_cfg_t light_cfg;
+        uint8_t endpoint;
+    } esp_zb_ep_on_off_light_cfg_t;
 
-/**
-* @brief color light driver init, be invoked where you want to use color light
-*
-* @param power power on/off
-*/
-void light_driver_init(bool power);
+// Macro to create default config with endpoint
+#define ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(ep)          \
+    {                                                      \
+        .light_cfg = ESP_ZB_DEFAULT_ON_OFF_LIGHT_CONFIG(), \
+        .endpoint = ep,                                    \
+    }
+
+    /**
+     * @brief Set light power (on/off).
+     *
+     * @param  power  The light power to be set
+     */
+    void light_driver_set_power(bool power);
+
+    /**
+     * @brief color light driver init, be invoked where you want to use color light
+     *
+     * @param power power on/off
+     */
+    void light_driver_init(bool power);
+
+    /**
+     * @brief Create on/off light endpoint with configuration
+     *
+     * @param[in] ep_list Endpoint list to add the light endpoint to
+     * @param[in] ep_light_cfg Extended configuration including endpoint ID
+     * @return Cluster list for the light endpoint
+     */
+    esp_zb_cluster_list_t *garage_on_off_light_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg);
 
 #ifdef __cplusplus
 } // extern "C"

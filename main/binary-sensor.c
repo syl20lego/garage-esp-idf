@@ -1,7 +1,7 @@
 #include "binary-sensor.h"
 #include "esp_zigbee_core.h"
 
-esp_zb_ep_list_t *esp_zb_binary_sensor_ep_create(uint8_t endpoint, esp_zb_binary_sensor_cfg_t *sensor_cfg)
+esp_zb_cluster_list_t *garage_binary_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_binary_sensor_cfg_t *sensor_cfg)
 {
     // Create cluster list
     esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
@@ -18,14 +18,13 @@ esp_zb_ep_list_t *esp_zb_binary_sensor_ep_create(uint8_t endpoint, esp_zb_binary
 
     // Create endpoint configuration
     esp_zb_endpoint_config_t endpoint_config = {
-        .endpoint = endpoint,
+        .endpoint = sensor_cfg->endpoint,
         .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
         .app_device_id = ESP_ZB_HA_SIMPLE_SENSOR_DEVICE_ID,
         .app_device_version = 0};
 
-    // Create and configure endpoint list
-    esp_zb_ep_list_t *ep_list = esp_zb_ep_list_create();
+    // Add binary enpoint to the endpoint list
     esp_zb_ep_list_add_ep(ep_list, cluster_list, endpoint_config);
 
-    return ep_list;
+    return cluster_list;
 }
