@@ -65,3 +65,20 @@ I (11618) ESP_ZB_ON_OFF_LIGHT: Light sets to Off
 ## Troubleshooting
 
 For any technical queries, please open an [issue](https://github.com/espressif/esp-idf/issues) on GitHub. We will get back to you soon.
+
+
+## Useful Commands
+
+`idf.py set-target esp32c6`
+
+`idf.py fullclean`
+
+`idf.py build`
+
+`ls /dev/tty*`
+
+`idf.py monitor` exit with `ctrl`+`]`
+
+`idf.py -p /dev/tty.usbmodem1401 flash` 
+
+`idf.py -p /dev/tty.usbmodem1401 erase-flash`
