@@ -48,7 +48,7 @@ extern "C"
 
 #define HA_ESP_LIGHT_ENDPOINT 10 /* esp light bulb device endpoint, used to process light controlling commands */
 
-#define GARAGE_DOOR_GPIO 23
+#define GARAGE_DOOR_GPIO GPIO_NUM_23
 
 /* light intensity level */
 #define MOTOR_DEFAULT_ON 1

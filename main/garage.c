@@ -21,6 +21,7 @@
 #include "ha/esp_zigbee_ha_standard.h"
 #include "garage.h"
 #include "driver/gpio.h"
+#include "motor_driver.h"
 #include "binary-sensor.h"
 
 #if !defined ZB_ED_ROLE
@@ -39,8 +40,8 @@ typedef struct light_bulb_device_params_s
     uint16_t short_addr;
 } light_bulb_device_params_t;
 
-static switch_func_pair_t button_func_pair[] = {
-    {GPIO_INPUT_IO_TOGGLE_SWITCH, SWITCH_ONOFF_TOGGLE_CONTROL}};
+static sensor_func_pair_t sensor_func_pair[] = {
+    {GPIO_INPUT_IO_TOGGLE_SENSOR, SENSOR_TOGGLE_CONTROLL_ON}};
 
 // static void zb_buttons_handler(switch_func_pair_t *button_func_pair)
 // {
@@ -58,34 +59,44 @@ static switch_func_pair_t button_func_pair[] = {
 //     }
 // }
 
-static void zb_buttons_handler(switch_func_pair_t *button_func_pair)
+static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
 {
-    if (button_func_pair->func == SWITCH_ONOFF_TOGGLE_CONTROL)
+    if (button_func_pair->func == SENSOR_TOGGLE_CONTROLL_ON ||
+        button_func_pair->func == SENSOR_TOGGLE_CONTROLL_OFF)
     {
         // Toggle the binary sensor state
         static bool sensor_state = false;
         sensor_state = !sensor_state;
 
+        ESP_LOGI(TAG, "Sensor changed - setting binary sensor state to: %s", sensor_state ? "On" : "Off");
+
         esp_zb_lock_acquire(portMAX_DELAY);
 
         // Update the attribute value
-        esp_zb_zcl_set_attribute_val(HA_ONOFF_SWITCH_ENDPOINT,
-                                     ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
-                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-                                     ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
-                                     &sensor_state, false);
+        ESP_ERROR_CHECK(esp_zb_zcl_set_attribute_val(HA_BINARY_SENSOR_ENDPOINT,
+                                                     ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
+                                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+                                                     ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
+                                                     &sensor_state, false));
+
+        esp_zb_lock_release();
+
+        // Small delay before reporting to ensure attribute is set
+        vTaskDelay(pdMS_TO_TICKS(10));
 
         // Report the attribute change to the coordinator (Home Assistant)
+        esp_zb_lock_acquire(portMAX_DELAY);
+
         esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
             .zcl_basic_cmd = {
-                .src_endpoint = HA_ONOFF_SWITCH_ENDPOINT,
+                .src_endpoint = HA_BINARY_SENSOR_ENDPOINT,
             },
             .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
             .clusterID = ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
             .attributeID = ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
             .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
         };
-        esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd);
+        ESP_ERROR_CHECK(esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd));
 
         esp_zb_lock_release();
 
@@ -96,8 +107,8 @@ static void zb_buttons_handler(switch_func_pair_t *button_func_pair)
 static esp_err_t deferred_driver_init(void)
 {
     motor_driver_init(MOTOR_DEFAULT_OFF);
-    ESP_RETURN_ON_FALSE(switch_driver_init(button_func_pair, PAIR_SIZE(button_func_pair), zb_buttons_handler), ESP_FAIL, TAG,
-                        "Failed to initialize switch driver");
+    ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, PAIR_SIZE(sensor_func_pair), zb_sensor_handler), ESP_FAIL, TAG,
+                        "Failed to initialize binary sensor");
     return ESP_OK;
 }
 
@@ -131,7 +142,7 @@ static void user_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t 
         light->short_addr = addr;
         esp_zb_ieee_address_by_short(light->short_addr, light->ieee_addr);
         esp_zb_get_long_address(bind_req.src_address);
-        bind_req.src_endp = HA_ONOFF_SWITCH_ENDPOINT;
+        bind_req.src_endp = HA_BINARY_SENSOR_ENDPOINT;
         bind_req.cluster_id = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF;
         bind_req.dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
         memcpy(bind_req.dst_address_u.addr_long, light->ieee_addr, sizeof(esp_zb_ieee_addr_t));
@@ -279,7 +290,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t *message)
 {
     esp_err_t ret = ESP_OK;
-    bool light_state = 0;
+    bool motor_state = 0;
 
     ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
     ESP_RETURN_ON_FALSE(message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, TAG, "Received message: error status(%d)",
@@ -292,9 +303,9 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
         {
             if (message->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID && message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_BOOL)
             {
-                light_state = message->attribute.data.value ? *(bool *)message->attribute.data.value : light_state;
-                ESP_LOGI(TAG, "Light sets to %s", light_state ? "On" : "Off");
-                motor_driver_set_power(light_state);
+                motor_state = message->attribute.data.value ? *(bool *)message->attribute.data.value : motor_state;
+                ESP_LOGI(TAG, "Motor sets to %s", motor_state ? "On" : "Off");
+                motor_driver_set_power(motor_state);
             }
         }
     }
@@ -309,8 +320,16 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
     case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
         ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
         break;
+    case ESP_ZB_CORE_REPORT_ATTR_CB_ID:
+        // Handle report attribute callback
+        ESP_LOGI(TAG, "Report attribute callback received");
+        break;
+    case ESP_ZB_CORE_CMD_DEFAULT_RESP_CB_ID:
+        // Handle default response callback
+        ESP_LOGD(TAG, "Default response callback received");
+        break;
     default:
-        ESP_LOGW(TAG, "Receive Zigbee action(0x%x) callback", callback_id);
+        ESP_LOGD(TAG, "Receive Zigbee action(0x%x) callback", callback_id);
         break;
     }
     return ret;
@@ -340,12 +359,12 @@ static void esp_zb_task(void *pvParameters)
     // Create binary sensor endpoint
     static char garage_door_name[] = "\x0b"
                                      "Garage Door";
-    esp_zb_binary_sensor_cfg_t sensor_cfg = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_ONOFF_SWITCH_ENDPOINT, garage_door_name);
+    esp_zb_binary_sensor_cfg_t sensor_cfg = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT, garage_door_name);
     garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg);
 
     // Add manufacturer info to both endpoints
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ESP_LIGHT_ENDPOINT, &info);
-    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ONOFF_SWITCH_ENDPOINT, &info);
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT, &info);
 
     // Register the single device with both endpoints
     esp_zb_device_register(esp_zb_ep_list);

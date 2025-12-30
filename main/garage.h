@@ -13,8 +13,6 @@
  */
 
 #include "esp_zigbee_core.h"
-#include "motor_driver.h"
-#include "switch_driver.h"
 #include "zcl_utility.h"
 
 /* Zigbee configuration */
@@ -25,7 +23,7 @@
 
 #define MAX_CHILDREN 10                 /* the max amount of connected devices */
 #define INSTALLCODE_POLICY_ENABLE false /* enable the install code policy for security */
-#define HA_ONOFF_SWITCH_ENDPOINT 1      /* esp light switch device endpoint */
+#define HA_BINARY_SENSOR_ENDPOINT 1     /* esp light switch device endpoint */
 
 /* Basic manufacturer information */
 #define ESP_MANUFACTURER_NAME "\x09" \

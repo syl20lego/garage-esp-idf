@@ -1,5 +1,43 @@
-#include "binary-sensor.h"
 #include "esp_zigbee_core.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "binary-sensor.h"
+
+static QueueHandle_t gpio_evt_queue = NULL;
+/* button function pair, should be defined in switch example source file */
+static sensor_func_pair_t *sensor_func_pair;
+/* call back function pointer */
+static esp_sensor_callback_t func_ptr;
+/* which button is pressed */
+static uint8_t switch_num;
+static const char *TAG = "ESP_ZB_SENSOR";
+
+static void IRAM_ATTR gpio_isr_handler(void *arg)
+{
+    xQueueSendFromISR(gpio_evt_queue, (sensor_func_pair_t *)arg, NULL);
+}
+
+/**
+ * @brief Enable GPIO (switches refer to) isr
+ *
+ * @param enabled      enable isr if true.
+ */
+static void binary_sensor_gpios_intr_enabled(bool enabled)
+{
+    for (int i = 0; i < switch_num; ++i)
+    {
+        if (enabled)
+        {
+            gpio_intr_enable((sensor_func_pair + i)->pin);
+        }
+        else
+        {
+            gpio_intr_disable((sensor_func_pair + i)->pin);
+        }
+    }
+}
 
 /**
     3.14.5 Binary Input (Basic)
@@ -150,4 +188,105 @@ esp_zb_cluster_list_t *garage_binary_sensor_ep_create(esp_zb_ep_list_t *ep_list,
     esp_zb_ep_list_add_ep(ep_list, cluster_list, endpoint_config);
 
     return cluster_list;
+}
+
+/**
+ * @brief Tasks for checking the button event and debounce the switch state
+ *
+ * @param arg      Unused value.
+ */
+static void binary_sensor_detected(void *arg)
+{
+    gpio_num_t io_num = GPIO_NUM_NC;
+    sensor_func_pair_t sensor_func_pair;
+    static binary_sensor_state_t sensor_state = SENSOR_IDLE;
+    bool evt_flag = false;
+
+    for (;;)
+    {
+        /* check if there is any queue received, if yes read out the button_func_pair */
+        if (xQueueReceive(gpio_evt_queue, &sensor_func_pair, portMAX_DELAY))
+        {
+            io_num = sensor_func_pair.pin;
+            binary_sensor_gpios_intr_enabled(false);
+            evt_flag = true;
+        }
+        while (evt_flag)
+        {
+            bool value = gpio_get_level(io_num);
+            ESP_LOGI(TAG, "Sensor changed - setting binary sensor state to: %s", value ? "On" : "Off");
+
+            switch (sensor_state)
+            {
+            case SENSOR_IDLE:
+                sensor_state = (value == GPIO_INPUT_LEVEL_ON) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF;
+                break;
+            case SENSOR_DETECTED:
+                sensor_state = (value == GPIO_INPUT_LEVEL_ON) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF;
+                break;
+            default:
+                break;
+            }
+            if (sensor_state == SENSOR_IDLE)
+            {
+                binary_sensor_gpios_intr_enabled(true);
+                evt_flag = false;
+                break;
+            }
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+        }
+    }
+}
+
+/**
+ * @brief init GPIO configuration as well as isr
+ *
+ * @param button_func_pair      pointer of the button pair.
+ * @param button_num            number of button pair.
+ */
+static bool binary_sensor_gpio_init(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num)
+{
+    gpio_config_t io_conf = {};
+    sensor_func_pair = sensor_func_pair;
+    sensor_num = sensor_num;
+    uint64_t pin_bit_mask = 0;
+
+    /* set up button func pair pin mask */
+    for (int i = 0; i < sensor_num; ++i)
+    {
+        pin_bit_mask |= (1ULL << (sensor_func_pair + i)->pin);
+    }
+    /* interrupt of falling edge */
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;
+    io_conf.pin_bit_mask = pin_bit_mask;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pull_up_en = 1;
+    /* configure GPIO with the given settings */
+    gpio_config(&io_conf);
+    /* create a queue to handle gpio event from isr */
+    gpio_evt_queue = xQueueCreate(10, sizeof(sensor_func_pair_t));
+    if (gpio_evt_queue == 0)
+    {
+        ESP_LOGE(TAG, "Queue was not created and must not be used");
+        return false;
+    }
+    /* start gpio task */
+    xTaskCreate(binary_sensor_detected, "sensor_detected", 4096, NULL, 10, NULL);
+    /* install gpio isr service */
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    for (int i = 0; i < sensor_num; ++i)
+    {
+        gpio_isr_handler_add((sensor_func_pair + i)->pin, gpio_isr_handler, (void *)(sensor_func_pair + i));
+    }
+    return true;
+}
+
+bool binary_sensor_init(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num, esp_sensor_callback_t cb)
+{
+    if (!binary_sensor_gpio_init(sensor_func_pair, sensor_num))
+    {
+        return false;
+    }
+    func_ptr = cb;
+    return true;
 }
