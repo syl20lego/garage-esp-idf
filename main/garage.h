@@ -13,7 +13,7 @@
  */
 
 #include "esp_zigbee_core.h"
-#include "light_driver.h"
+#include "motor_driver.h"
 #include "switch_driver.h"
 #include "zcl_utility.h"
 
@@ -21,7 +21,6 @@
 #define INSTALLCODE_POLICY_ENABLE false                                  /* enable the install code policy for security */
 #define ED_AGING_TIMEOUT ESP_ZB_ED_AGING_TIMEOUT_64MIN                   /* aging timeout of device */
 #define ED_KEEP_ALIVE 3000                                               /* 3000 millisecond */
-#define HA_ESP_LIGHT_ENDPOINT 10                                         /* esp light bulb device endpoint, used to process light controlling commands */
 #define ESP_ZB_PRIMARY_CHANNEL_MASK ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK /* Zigbee primary channel mask use in the example */
 
 #define MAX_CHILDREN 10                 /* the max amount of connected devices */

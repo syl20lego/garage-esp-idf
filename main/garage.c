@@ -24,12 +24,11 @@
 #include "binary-sensor.h"
 
 #if !defined ZB_ED_ROLE
-#error Define ZB_ED_ROLE in idf.py menuconfig to compile light (End Device) source code.
+#error Define ZB_ED_ROLE in idf.py menuconfig to compile garage (End Device) source code.
 #endif
 
 #define DOOR_SENSOR "\x0a" \
                     "Door Sensor"
-#define BLINK_GPIO 15
 
 static const char *TAG = "ESP_ZB_GARAGE";
 /********************* Define functions **************************/
@@ -94,17 +93,9 @@ static void zb_buttons_handler(switch_func_pair_t *button_func_pair)
     }
 }
 
-static void configure_led(void)
-{
-    ESP_LOGI(TAG, "Example configured to blink GPIO LED!");
-    gpio_reset_pin(BLINK_GPIO);
-    /* Set the GPIO as a push/pull output */
-    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
-}
-
 static esp_err_t deferred_driver_init(void)
 {
-    light_driver_init(LIGHT_DEFAULT_OFF);
+    motor_driver_init(MOTOR_DEFAULT_OFF);
     ESP_RETURN_ON_FALSE(switch_driver_init(button_func_pair, PAIR_SIZE(button_func_pair), zb_buttons_handler), ESP_FAIL, TAG,
                         "Failed to initialize switch driver");
     return ESP_OK;
@@ -303,7 +294,7 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
             {
                 light_state = message->attribute.data.value ? *(bool *)message->attribute.data.value : light_state;
                 ESP_LOGI(TAG, "Light sets to %s", light_state ? "On" : "Off");
-                light_driver_set_power(light_state);
+                motor_driver_set_power(light_state);
             }
         }
     }
@@ -344,7 +335,7 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_ep_list_t *esp_zb_ep_list = esp_zb_ep_list_create();
 
     esp_zb_ep_on_off_light_cfg_t light_cfg = ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(HA_ESP_LIGHT_ENDPOINT);
-    garage_on_off_light_ep_create(esp_zb_ep_list, &light_cfg);
+    garage_on_off_motor_ep_create(esp_zb_ep_list, &light_cfg);
 
     // Create binary sensor endpoint
     static char garage_door_name[] = "\x0b"
@@ -368,7 +359,6 @@ static void esp_zb_task(void *pvParameters)
 
 void app_main(void)
 {
-    configure_led();
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config = ESP_ZB_DEFAULT_HOST_CONFIG(),

@@ -37,32 +37,41 @@
 
 #include "esp_log.h"
 #include "led_strip.h"
-#include "light_driver.h"
+#include "driver/gpio.h"
+#include "motor_driver.h"
 #include "esp_zigbee_core.h"
 
-static led_strip_handle_t s_led_strip;
-static uint8_t s_red = 255, s_green = 255, s_blue = 255;
+static const char *TAG = "GARAGE_DRIVER";
 
-void light_driver_set_power(bool power)
+void motor_driver_set_power(bool power)
 {
-    ESP_ERROR_CHECK(led_strip_set_pixel(s_led_strip, 0, s_red * power, s_green * power, s_blue * power));
-    ESP_ERROR_CHECK(led_strip_refresh(s_led_strip));
+    // Set GPIO high (1) or low (0) based on power state
+    ESP_ERROR_CHECK(gpio_set_level(GARAGE_DOOR_GPIO, power ? 0 : 1));
+    ESP_LOGI(TAG, "Garage door GPIO set to %s", power ? "LOW" : "HIGH");
 }
 
-void light_driver_init(bool power)
+void motor_driver_init(bool power)
 {
-    led_strip_config_t led_strip_conf = {
-        .max_leds = CONFIG_EXAMPLE_STRIP_LED_NUMBER,
-        .strip_gpio_num = CONFIG_EXAMPLE_STRIP_LED_GPIO,
+    // Configure GPIO 23 as output
+    gpio_reset_pin(GARAGE_DOOR_GPIO);
+    /* Set the GPIO as a push/pull output */
+    gpio_set_direction(GARAGE_DOOR_GPIO, GPIO_MODE_OUTPUT);
+
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << GARAGE_DOOR_GPIO),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
     };
-    led_strip_rmt_config_t rmt_conf = {
-        .resolution_hz = 10 * 1000 * 1000, // 10MHz
-    };
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&led_strip_conf, &rmt_conf, &s_led_strip));
-    light_driver_set_power(power);
+    gpio_config(&io_conf);
+
+    // Set initial state
+    motor_driver_set_power(power);
+    ESP_LOGI(TAG, "Garage door GPIO initialized on pin %d", GARAGE_DOOR_GPIO);
 }
 
-esp_zb_cluster_list_t *garage_on_off_light_ep_create(esp_zb_ep_list_t *esp_zb_ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg)
+esp_zb_cluster_list_t *garage_on_off_motor_ep_create(esp_zb_ep_list_t *esp_zb_ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg)
 {
     // Create cluster list
     esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
