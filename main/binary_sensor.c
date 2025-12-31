@@ -39,7 +39,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "binary-sensor.h"
+#include "binary_sensor.h"
 
 #define ESP_INTR_FLAG_DEFAULT 0
 #define DEBOUNCE_TIME_MS 600

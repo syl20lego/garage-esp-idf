@@ -45,8 +45,9 @@
 #include "ha/esp_zigbee_ha_standard.h"
 #include "garage.h"
 #include "driver/gpio.h"
+#include "binary_sensor.h"
 #include "relay_driver.h"
-#include "binary-sensor.h"
+#include "occupency_sensor.h"
 
 #if !defined ZB_ED_ROLE
 #error Define ZB_ED_ROLE in idf.py menuconfig to compile garage (End Device) source code.
@@ -345,10 +346,14 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_binary_sensor_cfg_t sensor_cfg2 = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT_2, garage_door_name2);
     garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg2);
 
+    esp_zb_occupency_sensor_cfg_t occupency_cfg = ESP_ZB_DEFAULT_OCCCUPENCY_SENSOR_CONFIG(HA_OCCUPENCY_SENSOR_ENDPOINT_1);
+    garage_occupency_sensor_ep_create(esp_zb_ep_list, &occupency_cfg);
+
     // Add manufacturer info to both endpoints
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ESP_RELAY_ENDPOINT, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_1, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_2, &info);
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_OCCUPENCY_SENSOR_ENDPOINT_1, &info);
 
     // Register the single device with both endpoints
     esp_zb_device_register(esp_zb_ep_list);
