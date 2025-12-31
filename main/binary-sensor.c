@@ -6,6 +6,8 @@
 #include "binary-sensor.h"
 
 #define ESP_INTR_FLAG_DEFAULT 0
+#define DEBOUNCE_TIME_MS 600
+#define DEBOUNCE_SAMPLES 3
 
 static QueueHandle_t gpio_evt_queue = NULL;
 /* button function pair, should be defined in switch example source file */
@@ -202,54 +204,81 @@ static void binary_sensor_detected(void *arg)
     gpio_num_t io_num = GPIO_NUM_NC;
     sensor_func_pair_t sensor_func_pair;
     static binary_sensor_state_t sensor_state = SENSOR_IDLE;
-    bool evt_flag = false;
 
     for (;;)
     {
-        /* check if there is any queue received, if yes read out the button_func_pair */
+        /* check if there is any queue received, if yes read out the sensor_func_pair */
         if (xQueueReceive(gpio_evt_queue, &sensor_func_pair, portMAX_DELAY))
         {
             io_num = sensor_func_pair.pin;
             binary_sensor_gpios_intr_enabled(false);
-            evt_flag = true;
-        }
-        /* Debounce loop */
-        while (evt_flag)
-        {
-            bool value = gpio_get_level(io_num);
-            bool normal_level = sensor_func_pair.normal_level;
 
-            // ESP_LOGI(TAG, "GPIO level read: %d (ON=%d)", value, normal_level);
+            // Debounce: wait for stable state
+            vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_TIME_MS));
 
-            // Determine new state based on GPIO level
+            // Read GPIO level multiple times to confirm stable state
+            int stable_count = 0;
+            bool last_value = gpio_get_level(io_num);
 
-            binary_sensor_state_t new_state = (value == normal_level) ? SENSOR_DETECTED : SENSOR_IDLE;
-
-            // ESP_LOGI(TAG, "Sensor state transition: %s -> %s",
-            //          sensor_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
-            //          new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
-
-            // Only process if state actually changed
-            if (new_state != sensor_state)
+            for (int i = 0; i < DEBOUNCE_SAMPLES; i++)
             {
-                ESP_LOGD(TAG, "Sensor state changed  %s", new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
-                sensor_state = new_state;
+                vTaskDelay(pdMS_TO_TICKS(10));
+                bool current_value = gpio_get_level(io_num);
 
-                // Update the sensor_func_pair func field to match the state
-                sensor_func_pair.func = (new_state == SENSOR_DETECTED) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF;
-                // Call the callback to notify the application
-                (*func_ptr)(&sensor_func_pair);
+                if (current_value == last_value)
+                {
+                    stable_count++;
+                }
+                else
+                {
+                    stable_count = 0;
+                    last_value = current_value;
+                }
+            }
+
+            // Only process if we got consistent readings
+            if (stable_count >= DEBOUNCE_SAMPLES - 1)
+            {
+                bool value = last_value;
+                bool normal_level = sensor_func_pair.normal_level;
+
+                // Determine new state based on GPIO level
+                binary_sensor_state_t new_state = (value == normal_level) ? SENSOR_DETECTED : SENSOR_IDLE;
+
+                ESP_LOGD(TAG, "GPIO %d: level=%d, normal=%d, new_state=%s",
+                         io_num, value, normal_level,
+                         new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
+
+                // Only process if state actually changed
+                if (new_state != sensor_state)
+                {
+                    ESP_LOGI(TAG, "Sensor state changed: %s -> %s",
+                             sensor_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
+                             new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
+
+                    sensor_state = new_state;
+
+                    // Update the sensor_func_pair func field to match the state
+                    sensor_func_pair.func = (new_state == SENSOR_DETECTED) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF;
+
+                    // Call the callback to notify the application
+                    if (func_ptr)
+                    {
+                        func_ptr(&sensor_func_pair);
+                    }
+                }
+                else
+                {
+                    ESP_LOGD(TAG, "Sensor state unchanged, ignoring");
+                }
             }
             else
             {
-                ESP_LOGD(TAG, "Sensor state unchanged, ignoring");
+                ESP_LOGD(TAG, "GPIO %d: unstable signal detected, ignoring", io_num);
             }
 
-            // Small delay for debouncing
-            vTaskDelay(100 / portTICK_PERIOD_MS);
+            // Re-enable interrupts
             binary_sensor_gpios_intr_enabled(true);
-            evt_flag = false;
-            break;
         }
     }
 }
