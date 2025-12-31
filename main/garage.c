@@ -11,6 +11,7 @@
  * software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
  * CONDITIONS OF ANY KIND, either express or implied.
  */
+#include "sdkconfig.h"
 #include "string.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -41,23 +42,10 @@ typedef struct light_bulb_device_params_s
 } light_bulb_device_params_t;
 
 static sensor_func_pair_t sensor_func_pair[] = {
-    {GPIO_INPUT_IO_TOGGLE_SENSOR, SENSOR_TOGGLE_CONTROLL_OFF}, {GPIO_INPUT_IO_TOGGLE_SENSOR, SENSOR_TOGGLE_CONTROLL_ON}};
-
-// static void zb_buttons_handler(switch_func_pair_t *button_func_pair)
-// {
-//     if (button_func_pair->func == SWITCH_ONOFF_TOGGLE_CONTROL)
-//     {
-//         /* implemented light switch toggle functionality */
-//         esp_zb_zcl_on_off_cmd_t cmd_req;
-//         cmd_req.zcl_basic_cmd.src_endpoint = HA_ONOFF_SWITCH_ENDPOINT;
-//         cmd_req.address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT;
-//         cmd_req.on_off_cmd_id = ESP_ZB_ZCL_CMD_ON_OFF_TOGGLE_ID;
-//         esp_zb_lock_acquire(portMAX_DELAY);
-//         esp_zb_zcl_on_off_cmd_req(&cmd_req);
-//         esp_zb_lock_release();
-//         ESP_EARLY_LOGI(TAG, "Send 'on_off toggle' command");
-//     }
-// }
+    {GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
+    {GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_ON, GPIO_INPUT_PU_NO},
+    {GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
+    {GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_ON, GPIO_INPUT_PU_NO}};
 
 static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
 {

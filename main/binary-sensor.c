@@ -215,10 +215,13 @@ static void binary_sensor_detected(void *arg)
         while (evt_flag)
         {
             bool value = gpio_get_level(io_num);
-            ESP_LOGI(TAG, "GPIO level read: %d (ON=%d)", value, GPIO_INPUT_LEVEL_ON);
+            bool normal_level = sensor_func_pair.normal_level;
+
+            ESP_LOGI(TAG, "GPIO level read: %d (ON=%d)", value, normal_level);
 
             // Determine new state based on GPIO level
-            binary_sensor_state_t new_state = (value == GPIO_INPUT_LEVEL_ON) ? SENSOR_DETECTED : SENSOR_IDLE;
+
+            binary_sensor_state_t new_state = (value == normal_level) ? SENSOR_DETECTED : SENSOR_IDLE;
 
             ESP_LOGI(TAG, "Sensor state transition: %s -> %s",
                      sensor_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
@@ -304,10 +307,11 @@ bool binary_sensor_init(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num
     for (int i = 0; i < sensor_num; i++)
     {
         gpio_num_t pin = (sensor_func_pair + i)->pin;
+        bool normal_level = (sensor_func_pair + i)->normal_level;
         bool gpio_level = gpio_get_level(pin);
 
-        // Determine initial state based on GPIO level
-        binary_sensor_state_t initial_state = (gpio_level == GPIO_INPUT_LEVEL_ON) ? SENSOR_DETECTED : SENSOR_IDLE;
+        // Determine initial state based on GPIO level NO or NC
+        binary_sensor_state_t initial_state = (gpio_level == normal_level) ? SENSOR_DETECTED : SENSOR_IDLE;
 
         // Set the func field to match the state
         sensor_func_pair_t initial_sensor = {

@@ -9,9 +9,9 @@ extern "C"
 {
 #endif
 
-#define GPIO_INPUT_IO_TOGGLE_SENSOR GPIO_NUM_22
-
-#define GPIO_INPUT_LEVEL_ON 0
+/* Pull UP Normaly Closed or Open */
+#define GPIO_INPUT_PU_NO 0
+#define GPIO_INPUT__PU_NC 1
 
 #define ESP_INTR_FLAG_DEFAULT 0
 
@@ -31,8 +31,9 @@ extern "C"
 
     typedef struct
     {
-        uint32_t pin;
+        gpio_num_t pin;
         sensor_func_t func;
+        bool normal_level;
     } sensor_func_pair_t;
 
     typedef void (*esp_sensor_callback_t)(sensor_func_pair_t *param);
