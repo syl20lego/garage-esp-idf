@@ -23,7 +23,9 @@
 
 #define MAX_CHILDREN 10                 /* the max amount of connected devices */
 #define INSTALLCODE_POLICY_ENABLE false /* enable the install code policy for security */
-#define HA_BINARY_SENSOR_ENDPOINT 1     /* esp light switch device endpoint */
+#define HA_RELAY_SENSOR_ENDPOINT_1 1    /* esp relay sensor device endpoint 1 */
+#define HA_BINARY_SENSOR_ENDPOINT_1 2   /* esp binaray sensor device endpoint 1 */
+#define HA_BINARY_SENSOR_ENDPOINT_2 3   /* esp binaray sensor device endpoint 2 */
 
 /* Basic manufacturer information */
 #define ESP_MANUFACTURER_NAME "\x09" \

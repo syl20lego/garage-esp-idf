@@ -5,6 +5,8 @@
 #include "freertos/queue.h"
 #include "binary-sensor.h"
 
+#define ESP_INTR_FLAG_DEFAULT 0
+
 static QueueHandle_t gpio_evt_queue = NULL;
 /* button function pair, should be defined in switch example source file */
 static sensor_func_pair_t *sensor_func_pair;
@@ -302,37 +304,62 @@ bool binary_sensor_init(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num
         return false;
     }
     func_ptr = cb;
-    // Read and report initial state for each sensor
-    ESP_LOGI(TAG, "Reading initial sensor states for %d sensors", sensor_num);
-    for (int i = 0; i < sensor_num; i++)
+
+    ESP_LOGI(TAG, "Binary sensor driver initialized with %d sensors", sensor_num);
+    return true;
+}
+
+void binary_sensor_report_initial_states(sensor_func_pair_t *button_func_pair, uint8_t sensor_num)
+{
+    ESP_LOGI(TAG, "Reporting initial sensor states for %d sensors", sensor_num);
+
+    for (int i = 0; i < sensor_num; i += 2) // Step by 2 since each sensor has ON/OFF pair
     {
-        gpio_num_t pin = (sensor_func_pair + i)->pin;
-        bool normal_level = (sensor_func_pair + i)->normal_level;
+        gpio_num_t pin = (button_func_pair + i)->pin;
+        bool normal_level = (button_func_pair + i)->normal_level;
         bool gpio_level = gpio_get_level(pin);
 
-        // Determine initial state based on GPIO level NO or NC
-        binary_sensor_state_t initial_state = (gpio_level == normal_level) ? SENSOR_DETECTED : SENSOR_IDLE;
+        // Determine initial state based on GPIO level
+        bool sensor_state = (gpio_level == normal_level);
+        uint8_t endpoint = (button_func_pair + i)->endpoint;
 
-        // Set the func field to match the state
-        sensor_func_pair_t initial_sensor = {
-            .pin = pin,
-            .func = (initial_state == SENSOR_DETECTED) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF};
-
-        ESP_LOGI(TAG, "Sensor pin %d initial state: %s (GPIO level: %d)",
-                 pin,
-                 initial_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
+        ESP_LOGI(TAG, "Sensor endpoint %d, pin %d initial state: %s (GPIO level: %d)",
+                 endpoint, pin,
+                 sensor_state ? "DETECTED" : "IDLE",
                  gpio_level);
 
-        // Call the callback with initial state
-        if (func_ptr)
-        {
-            func_ptr(&initial_sensor);
-        }
+        // Update the attribute directly
+        esp_zb_lock_acquire(portMAX_DELAY);
+
+        esp_zb_zcl_set_attribute_val(endpoint,
+                                     ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
+                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+                                     ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
+                                     &sensor_state, false);
+
+        esp_zb_lock_release();
 
         // Small delay between sensors
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(100));
+
+        // Report to coordinator
+        esp_zb_lock_acquire(portMAX_DELAY);
+
+        esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
+            .zcl_basic_cmd = {
+                .src_endpoint = endpoint,
+            },
+            .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
+            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
+            .attributeID = ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
+            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
+        };
+        esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd);
+
+        esp_zb_lock_release();
+
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     ESP_LOGI(TAG, "Initial sensor states reported");
-    return true;
 }

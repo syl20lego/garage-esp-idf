@@ -42,10 +42,10 @@ typedef struct light_bulb_device_params_s
 } light_bulb_device_params_t;
 
 static sensor_func_pair_t sensor_func_pair[] = {
-    {GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
-    {GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_ON, GPIO_INPUT_PU_NO},
-    {GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
-    {GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_ON, GPIO_INPUT_PU_NO}};
+    {HA_BINARY_SENSOR_ENDPOINT_1, GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
+    {HA_BINARY_SENSOR_ENDPOINT_1, GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_ON, GPIO_INPUT_PU_NO},
+    {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
+    {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_ON, GPIO_INPUT_PU_NO}};
 
 static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
 {
@@ -61,7 +61,7 @@ static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
         esp_zb_lock_acquire(portMAX_DELAY);
 
         // Update the attribute value
-        ESP_ERROR_CHECK(esp_zb_zcl_set_attribute_val(HA_BINARY_SENSOR_ENDPOINT,
+        ESP_ERROR_CHECK(esp_zb_zcl_set_attribute_val(button_func_pair->endpoint,
                                                      ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
                                                      ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                                                      ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
@@ -77,7 +77,7 @@ static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
 
         esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
             .zcl_basic_cmd = {
-                .src_endpoint = HA_BINARY_SENSOR_ENDPOINT,
+                .src_endpoint = button_func_pair->endpoint,
             },
             .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
             .clusterID = ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
@@ -95,7 +95,7 @@ static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
 static esp_err_t deferred_driver_init(void)
 {
     motor_driver_init(MOTOR_DEFAULT_OFF);
-    ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, PAIR_SIZE(sensor_func_pair), zb_sensor_handler), ESP_FAIL, TAG,
+    ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), zb_sensor_handler), ESP_FAIL, TAG,
                         "Failed to initialize binary sensor");
     return ESP_OK;
 }
@@ -130,7 +130,7 @@ static void user_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t 
         light->short_addr = addr;
         esp_zb_ieee_address_by_short(light->short_addr, light->ieee_addr);
         esp_zb_get_long_address(bind_req.src_address);
-        bind_req.src_endp = HA_BINARY_SENSOR_ENDPOINT;
+        bind_req.src_endp = HA_RELAY_SENSOR_ENDPOINT_1;
         bind_req.cluster_id = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF;
         bind_req.dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
         memcpy(bind_req.dst_address_u.addr_long, light->ieee_addr, sizeof(esp_zb_ieee_addr_t));
@@ -229,6 +229,9 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                      extended_pan_id[7], extended_pan_id[6], extended_pan_id[5], extended_pan_id[4],
                      extended_pan_id[3], extended_pan_id[2], extended_pan_id[1], extended_pan_id[0],
                      esp_zb_get_pan_id(), esp_zb_get_current_channel(), esp_zb_get_short_address());
+
+            // Report initial states after joining network
+            binary_sensor_report_initial_states(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair));
         }
         else
         {
@@ -265,6 +268,12 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             else
             {
                 ESP_LOGW(TAG, "Network(0x%04hx) closed, devices joining not allowed.", esp_zb_get_pan_id());
+                // Network is now stable and closed - safe to report initial states on reboot
+                if (!esp_zb_bdb_is_factory_new())
+                {
+                    ESP_LOGI(TAG, "Reporting initial sensor states after reboot");
+                    binary_sensor_report_initial_states(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair));
+                }
             }
         }
         break;
@@ -345,14 +354,21 @@ static void esp_zb_task(void *pvParameters)
     garage_on_off_motor_ep_create(esp_zb_ep_list, &light_cfg);
 
     // Create binary sensor endpoint
-    static char garage_door_name[] = "\x0b"
-                                     "Garage Door";
-    esp_zb_binary_sensor_cfg_t sensor_cfg = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT, garage_door_name);
-    garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg);
+    static char garage_door_name1[] = "\x0d"
+                                      "Garage Door 1";
+    esp_zb_binary_sensor_cfg_t sensor_cfg1 = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT_1, garage_door_name1);
+    garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg1);
+
+    // Create binary sensor endpoint
+    static char garage_door_name2[] = "\x0d"
+                                      "Garage Door 2";
+    esp_zb_binary_sensor_cfg_t sensor_cfg2 = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT_2, garage_door_name2);
+    garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg2);
 
     // Add manufacturer info to both endpoints
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ESP_LIGHT_ENDPOINT, &info);
-    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT, &info);
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_1, &info);
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_2, &info);
 
     // Register the single device with both endpoints
     esp_zb_device_register(esp_zb_ep_list);

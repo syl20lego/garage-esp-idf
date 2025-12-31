@@ -13,9 +13,7 @@ extern "C"
 #define GPIO_INPUT_PU_NO 0
 #define GPIO_INPUT__PU_NC 1
 
-#define ESP_INTR_FLAG_DEFAULT 0
-
-#define PAIR_SIZE(TYPE_STR_PAIR) (sizeof(TYPE_STR_PAIR) / sizeof(TYPE_STR_PAIR[0]))
+#define SENSOR_PAIR_SIZE(TYPE_STR_PAIR) (sizeof(TYPE_STR_PAIR) / sizeof(TYPE_STR_PAIR[0]))
 
     typedef enum
     {
@@ -31,6 +29,7 @@ extern "C"
 
     typedef struct
     {
+        uint8_t endpoint;
         gpio_num_t pin;
         sensor_func_t func;
         bool normal_level;
@@ -73,6 +72,14 @@ extern "C"
      * @param cb                    callback pointer.
      */
     bool binary_sensor_init(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num, esp_sensor_callback_t cb);
+
+    /**
+     * @brief Report initial sensor states (call after Zigbee network is ready)
+     *
+     * @param[in] sensor_func_pair Array of sensor configurations
+     * @param[in] sensor_num Number of sensors
+     */
+    void binary_sensor_report_initial_states(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num);
 
 #ifdef __cplusplus
 } // extern "C"
