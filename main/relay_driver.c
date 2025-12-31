@@ -38,27 +38,27 @@
 #include "esp_log.h"
 #include "led_strip.h"
 #include "driver/gpio.h"
-#include "motor_driver.h"
+#include "relay_driver.h"
 #include "esp_zigbee_core.h"
 
 static const char *TAG = "GARAGE_DRIVER";
 
-void motor_driver_set_power(bool power)
+void relay_driver_set_power(bool power)
 {
     // Set GPIO high (1) or low (0) based on power state
-    ESP_ERROR_CHECK(gpio_set_level(GARAGE_DOOR_GPIO, power ? 0 : 1));
-    ESP_LOGI(TAG, "Garage door GPIO set to %s", power ? "LOW" : "HIGH");
+    ESP_ERROR_CHECK(gpio_set_level(GARAGE_RELAY_GPIO, power ? 0 : 1));
+    ESP_LOGI(TAG, "Garage relay GPIO set to %s", power ? "LOW" : "HIGH");
 }
 
-void motor_driver_init(bool power)
+void relay_driver_init(bool power)
 {
     // Configure GPIO 23 as output
-    gpio_reset_pin(GARAGE_DOOR_GPIO);
+    gpio_reset_pin(GARAGE_RELAY_GPIO);
     /* Set the GPIO as a push/pull output */
-    gpio_set_direction(GARAGE_DOOR_GPIO, GPIO_MODE_OUTPUT);
+    gpio_set_direction(GARAGE_RELAY_GPIO, GPIO_MODE_OUTPUT);
 
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << GARAGE_DOOR_GPIO),
+        .pin_bit_mask = (1ULL << GARAGE_RELAY_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -67,11 +67,11 @@ void motor_driver_init(bool power)
     gpio_config(&io_conf);
 
     // Set initial state
-    motor_driver_set_power(power);
-    ESP_LOGI(TAG, "Garage door GPIO initialized on pin %d", GARAGE_DOOR_GPIO);
+    relay_driver_set_power(power);
+    ESP_LOGI(TAG, "Garage relay GPIO initialized on pin %d", GARAGE_RELAY_GPIO);
 }
 
-esp_zb_cluster_list_t *garage_on_off_motor_ep_create(esp_zb_ep_list_t *esp_zb_ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg)
+esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *esp_zb_ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg)
 {
     // Create cluster list
     esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();

@@ -22,7 +22,7 @@
 #include "ha/esp_zigbee_ha_standard.h"
 #include "garage.h"
 #include "driver/gpio.h"
-#include "motor_driver.h"
+#include "relay_driver.h"
 #include "binary-sensor.h"
 
 #if !defined ZB_ED_ROLE
@@ -93,7 +93,7 @@ static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
 
 static esp_err_t deferred_driver_init(void)
 {
-    motor_driver_init(MOTOR_DEFAULT_OFF);
+    relay_driver_init(RELAY_DEFAULT_OFF);
     ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), zb_sensor_handler), ESP_FAIL, TAG,
                         "Failed to initialize binary sensor");
     return ESP_OK;
@@ -286,7 +286,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t *message)
 {
     esp_err_t ret = ESP_OK;
-    bool motor_state = 0;
+    bool relay_state = 0;
 
     ESP_RETURN_ON_FALSE(message, ESP_FAIL, TAG, "Empty message");
     ESP_RETURN_ON_FALSE(message->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, TAG, "Received message: error status(%d)",
@@ -299,9 +299,9 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
         {
             if (message->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID && message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_BOOL)
             {
-                motor_state = message->attribute.data.value ? *(bool *)message->attribute.data.value : motor_state;
-                ESP_LOGI(TAG, "Motor sets to %s", motor_state ? "On" : "Off");
-                motor_driver_set_power(motor_state);
+                relay_state = message->attribute.data.value ? *(bool *)message->attribute.data.value : relay_state;
+                ESP_LOGI(TAG, "Relay sets to %s", relay_state ? "On" : "Off");
+                relay_driver_set_power(relay_state);
             }
         }
     }
@@ -350,7 +350,7 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_ep_list_t *esp_zb_ep_list = esp_zb_ep_list_create();
 
     esp_zb_ep_on_off_light_cfg_t light_cfg = ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(HA_ESP_LIGHT_ENDPOINT);
-    garage_on_off_motor_ep_create(esp_zb_ep_list, &light_cfg);
+    garage_on_off_relay_ep_create(esp_zb_ep_list, &light_cfg);
 
     // Create binary sensor endpoint
     static char garage_door_name1[] = "\x0d"

@@ -48,11 +48,11 @@ extern "C"
 
 #define HA_ESP_LIGHT_ENDPOINT 10 /* esp light bulb device endpoint, used to process light controlling commands */
 
-#define GARAGE_DOOR_GPIO GPIO_NUM_23
+#define GARAGE_RELAY_GPIO GPIO_NUM_23
 
 /* light intensity level */
-#define MOTOR_DEFAULT_ON 1
-#define MOTOR_DEFAULT_OFF 0
+#define RELAY_DEFAULT_ON 1
+#define RELAY_DEFAULT_OFF 0
 
     // Extended config struct that includes endpoint configuration
     typedef struct
@@ -73,14 +73,14 @@ extern "C"
      *
      * @param  power  The light power to be set
      */
-    void motor_driver_set_power(bool power);
+    void relay_driver_set_power(bool power);
 
     /**
      * @brief color light driver init, be invoked where you want to use color light
      *
      * @param power power on/off
      */
-    void motor_driver_init(bool power);
+    void relay_driver_init(bool power);
 
     /**
      * @brief Create on/off light endpoint with configuration
@@ -89,7 +89,7 @@ extern "C"
      * @param[in] ep_light_cfg Extended configuration including endpoint ID
      * @return Cluster list for the light endpoint
      */
-    esp_zb_cluster_list_t *garage_on_off_motor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg);
+    esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg);
 
 #ifdef __cplusplus
 } // extern "C"
