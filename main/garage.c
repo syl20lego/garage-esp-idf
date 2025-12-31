@@ -53,8 +53,7 @@ static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
         button_func_pair->func == SENSOR_TOGGLE_CONTROLL_OFF)
     {
         // Toggle the binary sensor state
-        static bool sensor_state = false;
-        sensor_state = !sensor_state;
+        bool sensor_state = button_func_pair->func == SENSOR_TOGGLE_CONTROLL_ON ? true : false;
 
         ESP_LOGI(TAG, "Sensor changed detected - state is: %s", sensor_state ? "On" : "Off");
 

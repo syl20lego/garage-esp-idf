@@ -219,15 +219,15 @@ static void binary_sensor_detected(void *arg)
             bool value = gpio_get_level(io_num);
             bool normal_level = sensor_func_pair.normal_level;
 
-            ESP_LOGI(TAG, "GPIO level read: %d (ON=%d)", value, normal_level);
+            // ESP_LOGI(TAG, "GPIO level read: %d (ON=%d)", value, normal_level);
 
             // Determine new state based on GPIO level
 
             binary_sensor_state_t new_state = (value == normal_level) ? SENSOR_DETECTED : SENSOR_IDLE;
 
-            ESP_LOGI(TAG, "Sensor state transition: %s -> %s",
-                     sensor_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
-                     new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
+            // ESP_LOGI(TAG, "Sensor state transition: %s -> %s",
+            //          sensor_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
+            //          new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
 
             // Only process if state actually changed
             if (new_state != sensor_state)
@@ -246,7 +246,7 @@ static void binary_sensor_detected(void *arg)
             }
 
             // Small delay for debouncing
-            vTaskDelay(10 / portTICK_PERIOD_MS);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
             binary_sensor_gpios_intr_enabled(true);
             evt_flag = false;
             break;
