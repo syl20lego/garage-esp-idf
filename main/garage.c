@@ -293,7 +293,7 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
                         message->info.status);
     ESP_LOGI(TAG, "Received message: endpoint(%d), cluster(0x%x), attribute(0x%x), data size(%d)", message->info.dst_endpoint, message->info.cluster,
              message->attribute.id, message->attribute.data.size);
-    if (message->info.dst_endpoint == HA_ESP_LIGHT_ENDPOINT)
+    if (message->info.dst_endpoint == HA_ESP_RELAY_ENDPOINT)
     {
         if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_ON_OFF)
         {
@@ -301,7 +301,7 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
             {
                 relay_state = message->attribute.data.value ? *(bool *)message->attribute.data.value : relay_state;
                 ESP_LOGI(TAG, "Relay sets to %s", relay_state ? "On" : "Off");
-                relay_driver_set_power(relay_state);
+                relay_driver_set_power(relay_state, message->info.dst_endpoint);
             }
         }
     }
@@ -349,7 +349,7 @@ static void esp_zb_task(void *pvParameters)
     // Create a single endpoint list with both endpoints
     esp_zb_ep_list_t *esp_zb_ep_list = esp_zb_ep_list_create();
 
-    esp_zb_ep_on_off_light_cfg_t light_cfg = ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(HA_ESP_LIGHT_ENDPOINT);
+    esp_zb_ep_on_off_light_cfg_t light_cfg = ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(HA_ESP_RELAY_ENDPOINT);
     garage_on_off_relay_ep_create(esp_zb_ep_list, &light_cfg);
 
     // Create binary sensor endpoint
@@ -365,7 +365,7 @@ static void esp_zb_task(void *pvParameters)
     garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg2);
 
     // Add manufacturer info to both endpoints
-    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ESP_LIGHT_ENDPOINT, &info);
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ESP_RELAY_ENDPOINT, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_1, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_2, &info);
 

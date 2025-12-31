@@ -46,7 +46,7 @@ extern "C"
 {
 #endif
 
-#define HA_ESP_LIGHT_ENDPOINT 10 /* esp light bulb device endpoint, used to process light controlling commands */
+#define HA_ESP_RELAY_ENDPOINT 10 /* esp light bulb device endpoint, used to process light controlling commands */
 
 #define GARAGE_RELAY_GPIO GPIO_NUM_23
 
@@ -69,16 +69,18 @@ extern "C"
     }
 
     /**
-     * @brief Set light power (on/off).
+     * @brief Set relay power (on/off) with automatic pulse handling.
+     *        When turned on, relay will pulse for 3 seconds then turn off.
      *
-     * @param  power  The light power to be set
+     * @param  power    The relay power to be set (true = pulse, false = force off)
+     * @param  endpoint The endpoint ID for reporting status back to coordinator
      */
-    void relay_driver_set_power(bool power);
+    void relay_driver_set_power(bool power, uint8_t endpoint);
 
     /**
-     * @brief color light driver init, be invoked where you want to use color light
+     * @brief Relay driver init, be invoked where you want to use relay
      *
-     * @param power power on/off
+     * @param power power on/off (should be false for relay applications)
      */
     void relay_driver_init(bool power);
 

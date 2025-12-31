@@ -40,14 +40,98 @@
 #include "driver/gpio.h"
 #include "relay_driver.h"
 #include "esp_zigbee_core.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "GARAGE_DRIVER";
+static TaskHandle_t pulse_task_handle = NULL;
 
-void relay_driver_set_power(bool power)
+// Task to handle the relay pulse
+static void relay_pulse_task(void *arg)
 {
-    // Set GPIO high (1) or low (0) based on power state
-    ESP_ERROR_CHECK(gpio_set_level(GARAGE_RELAY_GPIO, power ? 0 : 1));
-    ESP_LOGI(TAG, "Garage relay GPIO set to %s", power ? "LOW" : "HIGH");
+    uint8_t endpoint = (uint8_t)(uintptr_t)arg;
+
+    ESP_LOGI(TAG, "Relay pulse started - GPIO LOW for 3 seconds");
+
+    // Set GPIO LOW (relay ON)
+    gpio_set_level(GARAGE_RELAY_GPIO, 0);
+
+    // Wait 3 seconds
+    vTaskDelay(pdMS_TO_TICKS(3000));
+
+    // Set GPIO HIGH (relay OFF)
+    gpio_set_level(GARAGE_RELAY_GPIO, 1);
+    ESP_LOGI(TAG, "Relay pulse ended - GPIO HIGH (relay OFF)");
+
+    // Update the on/off attribute to OFF
+    esp_zb_lock_acquire(portMAX_DELAY);
+
+    bool off_state = false;
+    esp_zb_zcl_set_attribute_val(endpoint,
+                                 ESP_ZB_ZCL_CLUSTER_ID_ON_OFF,
+                                 ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+                                 ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID,
+                                 &off_state,
+                                 false);
+
+    esp_zb_lock_release();
+
+    // Small delay before reporting
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // Report the OFF state to Home Assistant
+    esp_zb_lock_acquire(portMAX_DELAY);
+
+    esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
+        .zcl_basic_cmd = {
+            .src_endpoint = endpoint,
+        },
+        .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
+        .clusterID = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF,
+        .attributeID = ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID,
+        .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
+    };
+    esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd);
+
+    esp_zb_lock_release();
+
+    ESP_LOGI(TAG, "Reported OFF state to Home Assistant");
+
+    // Clean up task handle
+    pulse_task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
+void relay_driver_set_power(bool power, uint8_t endpoint)
+{
+    if (power)
+    {
+        // If a pulse task is already running, don't start another
+        if (pulse_task_handle != NULL)
+        {
+            ESP_LOGW(TAG, "Relay pulse already in progress, ignoring new request");
+            return;
+        }
+
+        ESP_LOGI(TAG, "Starting relay pulse task");
+
+        // Create task to handle the 3-second pulse
+        xTaskCreate(relay_pulse_task, "relay_pulse", 2048, (void *)(uintptr_t)endpoint, 5, &pulse_task_handle);
+    }
+    else
+    {
+        // If power is OFF, cancel any running pulse task
+        if (pulse_task_handle != NULL)
+        {
+            ESP_LOGI(TAG, "Cancelling relay pulse task");
+            vTaskDelete(pulse_task_handle);
+            pulse_task_handle = NULL;
+        }
+
+        // Set GPIO HIGH (relay OFF)
+        gpio_set_level(GARAGE_RELAY_GPIO, 1);
+        ESP_LOGI(TAG, "Relay turned OFF manually");
+    }
 }
 
 void relay_driver_init(bool power)
@@ -66,8 +150,9 @@ void relay_driver_init(bool power)
     };
     gpio_config(&io_conf);
 
-    // Set initial state
-    relay_driver_set_power(power);
+    // Set initial state to HIGH (relay OFF)
+    gpio_set_level(GARAGE_RELAY_GPIO, 1);
+
     ESP_LOGI(TAG, "Garage relay GPIO initialized on pin %d", GARAGE_RELAY_GPIO);
 }
 
