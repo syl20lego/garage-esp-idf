@@ -211,29 +211,40 @@ static void binary_sensor_detected(void *arg)
             binary_sensor_gpios_intr_enabled(false);
             evt_flag = true;
         }
+        /* Debounce loop */
         while (evt_flag)
         {
             bool value = gpio_get_level(io_num);
-            ESP_LOGI(TAG, "Sensor changed - setting binary sensor state to: %s", value ? "On" : "Off");
+            ESP_LOGI(TAG, "GPIO level read: %d (ON=%d)", value, GPIO_INPUT_LEVEL_ON);
 
-            switch (sensor_state)
+            // Determine new state based on GPIO level
+            binary_sensor_state_t new_state = (value == GPIO_INPUT_LEVEL_ON) ? SENSOR_DETECTED : SENSOR_IDLE;
+
+            ESP_LOGI(TAG, "Sensor state transition: %s -> %s",
+                     sensor_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
+                     new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
+
+            // Only process if state actually changed
+            if (new_state != sensor_state)
             {
-            case SENSOR_IDLE:
-                sensor_state = (value == GPIO_INPUT_LEVEL_ON) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF;
-                break;
-            case SENSOR_DETECTED:
-                sensor_state = (value == GPIO_INPUT_LEVEL_ON) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF;
-                break;
-            default:
-                break;
+                ESP_LOGD(TAG, "Sensor state changed  %s", new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
+                sensor_state = new_state;
+
+                // Update the sensor_func_pair func field to match the state
+                sensor_func_pair.func = (new_state == SENSOR_DETECTED) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF;
+                // Call the callback to notify the application
+                (*func_ptr)(&sensor_func_pair);
             }
-            if (sensor_state == SENSOR_IDLE)
+            else
             {
-                binary_sensor_gpios_intr_enabled(true);
-                evt_flag = false;
-                break;
+                ESP_LOGD(TAG, "Sensor state unchanged, ignoring");
             }
+
+            // Small delay for debouncing
             vTaskDelay(10 / portTICK_PERIOD_MS);
+            binary_sensor_gpios_intr_enabled(true);
+            evt_flag = false;
+            break;
         }
     }
 }
@@ -257,7 +268,7 @@ static bool binary_sensor_gpio_init(sensor_func_pair_t *sensor_func_pair, uint8_
         pin_bit_mask |= (1ULL << (sensor_func_pair + i)->pin);
     }
     /* interrupt of falling edge */
-    io_conf.intr_type = GPIO_INTR_NEGEDGE;
+    io_conf.intr_type = GPIO_INTR_ANYEDGE;
     io_conf.pin_bit_mask = pin_bit_mask;
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pull_up_en = 1;
@@ -288,5 +299,36 @@ bool binary_sensor_init(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num
         return false;
     }
     func_ptr = cb;
+    // Read and report initial state for each sensor
+    ESP_LOGI(TAG, "Reading initial sensor states for %d sensors", sensor_num);
+    for (int i = 0; i < sensor_num; i++)
+    {
+        gpio_num_t pin = (sensor_func_pair + i)->pin;
+        bool gpio_level = gpio_get_level(pin);
+
+        // Determine initial state based on GPIO level
+        binary_sensor_state_t initial_state = (gpio_level == GPIO_INPUT_LEVEL_ON) ? SENSOR_DETECTED : SENSOR_IDLE;
+
+        // Set the func field to match the state
+        sensor_func_pair_t initial_sensor = {
+            .pin = pin,
+            .func = (initial_state == SENSOR_DETECTED) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF};
+
+        ESP_LOGI(TAG, "Sensor pin %d initial state: %s (GPIO level: %d)",
+                 pin,
+                 initial_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
+                 gpio_level);
+
+        // Call the callback with initial state
+        if (func_ptr)
+        {
+            func_ptr(&initial_sensor);
+        }
+
+        // Small delay between sensors
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    ESP_LOGI(TAG, "Initial sensor states reported");
     return true;
 }

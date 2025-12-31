@@ -41,7 +41,7 @@ typedef struct light_bulb_device_params_s
 } light_bulb_device_params_t;
 
 static sensor_func_pair_t sensor_func_pair[] = {
-    {GPIO_INPUT_IO_TOGGLE_SENSOR, SENSOR_TOGGLE_CONTROLL_ON}};
+    {GPIO_INPUT_IO_TOGGLE_SENSOR, SENSOR_TOGGLE_CONTROLL_OFF}, {GPIO_INPUT_IO_TOGGLE_SENSOR, SENSOR_TOGGLE_CONTROLL_ON}};
 
 // static void zb_buttons_handler(switch_func_pair_t *button_func_pair)
 // {
@@ -68,7 +68,7 @@ static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
         static bool sensor_state = false;
         sensor_state = !sensor_state;
 
-        ESP_LOGI(TAG, "Sensor changed - setting binary sensor state to: %s", sensor_state ? "On" : "Off");
+        ESP_LOGI(TAG, "Sensor changed detected - state is: %s", sensor_state ? "On" : "Off");
 
         esp_zb_lock_acquire(portMAX_DELAY);
 

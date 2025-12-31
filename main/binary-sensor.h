@@ -25,8 +25,8 @@ extern "C"
 
     typedef enum
     {
-        SENSOR_TOGGLE_CONTROLL_ON,
-        SENSOR_TOGGLE_CONTROLL_OFF
+        SENSOR_TOGGLE_CONTROLL_OFF = 0,
+        SENSOR_TOGGLE_CONTROLL_ON = 1
     } sensor_func_t;
 
     typedef struct
