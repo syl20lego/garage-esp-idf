@@ -1,45 +1,61 @@
+/*
+ * SPDX-FileCopyrightText: 2021-2023 Espressif Systems (Shanghai) CO LTD
+ *
+ * SPDX-License-Identifier: LicenseRef-Included
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form, except as embedded into a Espressif Systems
+ *    integrated circuit in a product or a software update for such product,
+ *    must reproduce the above copyright notice, this list of conditions and
+ *    the following disclaimer in the documentation and/or other materials
+ *    provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software without
+ *    specific prior written permission.
+ *
+ * 4. Any software provided in binary form under this license must not be reverse
+ *    engineered, decompiled, modified and/or disassembled.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+#include "string.h"
 #include "esp_zigbee_core.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/queue.h"
 #include "occupency_sensor.h"
+#include "esp_timer.h"
+#include "esp_rom_sys.h"
 
 #define ESP_INTR_FLAG_DEFAULT 0
+#define ULTRASONIC_MAX_TIMEOUT_US 30000      // 30ms timeout (increased from 25ms)
+#define ULTRASONIC_TRIGGER_PULSE_US 50       // 50us trigger pulse
+#define ULTRASONIC_DETECTION_DISTANCE_CM 100 // Detect objects within 100cm
+#define ULTRASONIC_MAX_DISTANCE_CM 400       // Maximum measurable distance (400cm = ~23ms round trip)
 
-static QueueHandle_t gpio_evt_queue = NULL;
-/* button function pair, should be defined in switch example source file */
+/* occupancy function pair, should be defined in switch example source file */
 static occupency_func_pair_t *occupency_func_pair;
 /* call back function pointer */
 static esp_occupency_callback_t func_ptr;
 /* which button is pressed */
 static uint8_t switch_num;
 static const char *TAG = "ESP_ZB_OCCUPENCY";
-
-static void IRAM_ATTR gpio_isr_handler(void *arg)
-{
-    xQueueSendFromISR(gpio_evt_queue, (occupency_func_pair_t *)arg, NULL);
-}
-
-/**
- * @brief Enable GPIO (switches refer to) isr
- *
- * @param enabled      enable isr if true.
- */
-static void occupency_sensor_gpios_intr_enabled(bool enabled)
-{
-    for (int i = 0; i < switch_num; ++i)
-    {
-        if (enabled)
-        {
-            gpio_intr_enable((occupency_func_pair + i)->pin);
-        }
-        else
-        {
-            gpio_intr_disable((occupency_func_pair + i)->pin);
-        }
-    }
-}
 
 /**
     4.8 Occupancy Sensing
@@ -207,89 +223,186 @@ esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_li
 }
 
 /**
- * @brief Tasks for checking the button event and debounce the switch state
+ * @brief Measure distance using HC-SR04 ultrasonic sensor
  *
- * @param arg      Unused value.
+ * @param trigger_pin GPIO pin connected to trigger
+ * @param echo_pin GPIO pin connected to echo
+ * @return Distance in centimeters, or -1 if timeout/error
  */
-static void occupency_sensor_detected(void *arg)
+static int32_t ultrasonic_measure_distance(gpio_num_t trigger_pin, gpio_num_t echo_pin)
 {
-    gpio_num_t io_num = GPIO_NUM_NC;
-    occupency_func_pair_t occupency_func_pair; // Local variable to receive from queue
-    static occupency_sensor_state_t occupency_state = OCCUPENCY_IDLE;
+    // Ensure trigger is LOW initially
+    gpio_set_level(trigger_pin, 0);
+    esp_rom_delay_us(5);
 
-    for (;;)
+    // Send 10us trigger pulse
+    gpio_set_level(trigger_pin, 1);
+    esp_rom_delay_us(ULTRASONIC_TRIGGER_PULSE_US);
+    gpio_set_level(trigger_pin, 0);
+
+    // Wait for echo pin to go HIGH (with timeout)
+    int64_t start_time = esp_timer_get_time();
+    while (gpio_get_level(echo_pin) == 0)
     {
-        /* check if there is any queue received, if yes read out the occupency_func_pair */
-        if (xQueueReceive(gpio_evt_queue, &occupency_func_pair, portMAX_DELAY))
+        if ((esp_timer_get_time() - start_time) > 10000) // 10ms timeout for echo start
         {
-            io_num = occupency_func_pair.pin;
-            occupency_sensor_gpios_intr_enabled(false);
+            ESP_LOGD(TAG, "Timeout waiting for echo pin to go HIGH");
+            return -1;
+        }
+    }
 
-            // Read GPIO level
-            bool value = gpio_get_level(io_num);
+    // Measure how long echo pin stays HIGH
+    int64_t pulse_start = esp_timer_get_time();
+    while (gpio_get_level(echo_pin) == 1)
+    {
+        int64_t elapsed = esp_timer_get_time() - pulse_start;
+        if (elapsed > ULTRASONIC_MAX_TIMEOUT_US)
+        {
+            ESP_LOGD(TAG, "Echo pulse too long (>30ms), object out of range");
+            return ULTRASONIC_MAX_DISTANCE_CM + 1; // Return value indicating out of range
+        }
+    }
+    int64_t pulse_end = esp_timer_get_time();
 
-            // Determine state based on GPIO level and normal level
-            occupency_state = (value == occupency_func_pair.normal_level) ? OCCUPENCY_DETECTED : OCCUPENCY_IDLE;
+    // Calculate distance in cm
+    // Speed of sound = 343 m/s = 0.0343 cm/us
+    // Distance = (time * speed) / 2 (round trip)
+    int64_t pulse_duration_us = pulse_end - pulse_start;
+    int32_t distance_cm = (pulse_duration_us * 343) / (2 * 10000);
 
-            ESP_LOGI(TAG, "Occupancy sensor GPIO %d: level=%d, normal=%d, state=%s",
-                     io_num, value, occupency_func_pair.normal_level,
-                     occupency_state == OCCUPENCY_IDLE ? "IDLE" : "DETECTED");
+    // Sanity check
+    if (distance_cm < 2 || distance_cm > ULTRASONIC_MAX_DISTANCE_CM)
+    {
+        ESP_LOGD(TAG, "Distance out of valid range: %ld cm", distance_cm);
+        return -1;
+    }
 
-            // Update the func field to match the state
-            occupency_func_pair.func = (occupency_state == OCCUPENCY_DETECTED) ? OCCUPENCY_TOGGLE_CONTROLL_ON : OCCUPENCY_TOGGLE_CONTROLL_OFF;
+    return distance_cm;
+}
 
-            // Call the callback to notify the application
-            if (func_ptr)
+/**
+ * @brief Task for periodically checking ultrasonic sensor
+ */
+static void occupency_sensor_task(void *arg)
+{
+    static occupency_sensor_state_t previous_state[10] = {OCCUPENCY_IDLE}; // Support up to 10 sensors
+    static int consecutive_errors[10] = {0};                               // Track consecutive errors per sensor
+    static bool task_ready = false;
+
+    // Wait for Zigbee stack to initialize
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    ESP_LOGI(TAG, "Starting occupancy sensor polling task");
+    task_ready = true;
+
+    while (1)
+    {
+        for (int i = 0; i < switch_num; i++)
+        {
+            occupency_func_pair_t *sensor = &occupency_func_pair[i];
+
+            // Measure distance
+            int32_t distance = ultrasonic_measure_distance(sensor->trigger, sensor->echo);
+
+            if (distance < 0)
             {
-                func_ptr(&occupency_func_pair); // Pass address of LOCAL variable, not global pointer
+                consecutive_errors[i]++;
+                if (consecutive_errors[i] == 5) // Only log once when hitting 5 errors
+                {
+                    ESP_LOGW(TAG, "Sensor %d (endpoint %d) has %d consecutive errors, check wiring",
+                             i, sensor->endpoint, consecutive_errors[i]);
+                }
+                else if (consecutive_errors[i] > 10)
+                {
+                    consecutive_errors[i] = 0; // Reset counter to avoid overflow
+                }
+                continue;
             }
 
-            // Re-enable interrupts
-            occupency_sensor_gpios_intr_enabled(true);
+            // Reset error counter on successful read
+            if (consecutive_errors[i] > 0)
+            {
+                ESP_LOGI(TAG, "Sensor %d recovered after %d errors", i, consecutive_errors[i]);
+                consecutive_errors[i] = 0;
+            }
+
+            // Determine occupancy state
+            occupency_sensor_state_t new_state = (distance <= ULTRASONIC_DETECTION_DISTANCE_CM) ? OCCUPENCY_DETECTED : OCCUPENCY_IDLE;
+
+            ESP_LOGV(TAG, "Sensor %d (endpoint %d): distance=%ld cm, state=%s",
+                     i, sensor->endpoint, distance,
+                     new_state == OCCUPENCY_IDLE ? "IDLE" : "DETECTED");
+
+            // Only process if state changed
+            if (new_state != previous_state[i])
+            {
+                ESP_LOGI(TAG, "Occupancy state changed on endpoint %d: %s -> %s (distance: %ld cm)",
+                         sensor->endpoint,
+                         previous_state[i] == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
+                         new_state == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
+                         distance);
+
+                previous_state[i] = new_state;
+
+                // Update func field
+                sensor->func = (new_state == OCCUPENCY_DETECTED) ? OCCUPENCY_TOGGLE_CONTROLL_ON : OCCUPENCY_TOGGLE_CONTROLL_OFF;
+
+                // Call callback only if task is ready and we're past initialization
+                if (func_ptr && task_ready)
+                {
+                    func_ptr(sensor);
+                }
+            }
+
+            // Small delay between sensors to avoid interference
+            vTaskDelay(pdMS_TO_TICKS(60));
         }
+
+        // Poll every 1 second
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
 /**
- * @brief init GPIO configuration as well as isr
+ * @brief init GPIO configuration for HC-SR04 ultrasonic sensor
  *
- * @param button_func_pair      pointer of the button pair.
- * @param button_num            number of button pair.
+ * @param sensor_func_pair_param  pointer to sensor pair array
+ * @param sensor_num              number of sensors
  */
-static bool occupency_sensor_gpio_init(occupency_func_pair_t *sensor_func_pair, uint8_t sensor_num)
+static bool occupency_sensor_gpio_init(occupency_func_pair_t *sensor_func_pair_param, uint8_t sensor_num)
 {
-    gpio_config_t io_conf = {};
-    occupency_func_pair = occupency_func_pair;
-    sensor_num = sensor_num;
-    uint64_t pin_bit_mask = 0;
+    occupency_func_pair = sensor_func_pair_param;
+    switch_num = sensor_num;
 
-    /* set up button func pair pin mask */
-    for (int i = 0; i < sensor_num; ++i)
+    for (int i = 0; i < sensor_num; i++)
     {
-        pin_bit_mask |= (1ULL << (sensor_func_pair + i)->pin);
+        // Configure trigger pin as output
+        gpio_config_t trigger_conf = {
+            .pin_bit_mask = (1ULL << sensor_func_pair_param[i].trigger),
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        gpio_config(&trigger_conf);
+        gpio_set_level(sensor_func_pair_param[i].trigger, 0);
+
+        // Configure echo pin as input
+        gpio_config_t echo_conf = {
+            .pin_bit_mask = (1ULL << sensor_func_pair_param[i].echo),
+            .mode = GPIO_MODE_INPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        gpio_config(&echo_conf);
+
+        ESP_LOGI(TAG, "Configured HC-SR04 sensor %d: trigger=GPIO%d, echo=GPIO%d",
+                 i, sensor_func_pair_param[i].trigger, sensor_func_pair_param[i].echo);
     }
-    /* interrupt of falling edge */
-    io_conf.intr_type = GPIO_INTR_ANYEDGE;
-    io_conf.pin_bit_mask = pin_bit_mask;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = 1;
-    /* configure GPIO with the given settings */
-    gpio_config(&io_conf);
-    /* create a queue to handle gpio event from isr */
-    gpio_evt_queue = xQueueCreate(10, sizeof(occupency_func_pair_t));
-    if (gpio_evt_queue == 0)
-    {
-        ESP_LOGE(TAG, "Queue was not created and must not be used");
-        return false;
-    }
-    /* start gpio task */
-    xTaskCreate(occupency_sensor_detected, "sensor_detected", 4096, NULL, 10, NULL);
-    /* install gpio isr service */
-    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-    for (int i = 0; i < sensor_num; ++i)
-    {
-        gpio_isr_handler_add((sensor_func_pair + i)->pin, gpio_isr_handler, (void *)(sensor_func_pair + i));
-    }
+
+    // Start polling task
+    xTaskCreate(occupency_sensor_task, "occupency_task", 4096, NULL, 10, NULL);
+
     return true;
 }
 
@@ -300,7 +413,56 @@ bool occupency_sensor_init(occupency_func_pair_t *sensor_func_pair, uint8_t sens
         return false;
     }
     func_ptr = cb;
-    // Read and report initial state for each sensor
-    ESP_LOGI(TAG, "Reading initial sensor states for %d sensors", sensor_num);
+    ESP_LOGI(TAG, "Occupancy sensor driver initialized with %d HC-SR04 sensors", sensor_num);
     return true;
+}
+
+void occupency_sensor_report_initial_states(occupency_func_pair_t *sensor_func_pair_param, uint8_t sensor_num)
+{
+    ESP_LOGI(TAG, "Reporting initial sensor states for %d sensors", sensor_num);
+
+    for (int i = 0; i < sensor_num; i++)
+    {
+        // Measure distance to determine initial state
+        int32_t distance = ultrasonic_measure_distance(sensor_func_pair_param[i].trigger,
+                                                       sensor_func_pair_param[i].echo);
+
+        uint8_t occupancy = (distance >= 0 && distance < ULTRASONIC_DETECTION_DISTANCE_CM) ? ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED : ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
+
+        uint8_t endpoint = sensor_func_pair_param[i].endpoint;
+
+        ESP_LOGI(TAG, "Occupancy sensor endpoint %d initial state: %s (distance: %ld cm)",
+                 endpoint,
+                 occupancy ? "OCCUPIED" : "UNOCCUPIED",
+                 distance);
+
+        // Update attribute
+        esp_zb_lock_acquire(portMAX_DELAY);
+        esp_zb_zcl_set_attribute_val(endpoint,
+                                     ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+                                     ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+                                     &occupancy, false);
+        esp_zb_lock_release();
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+
+        // Report to coordinator
+        esp_zb_lock_acquire(portMAX_DELAY);
+        esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
+            .zcl_basic_cmd = {
+                .src_endpoint = endpoint,
+            },
+            .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
+            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+            .attributeID = ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
+        };
+        esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd);
+        esp_zb_lock_release();
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    ESP_LOGI(TAG, "Initial occupancy sensor states reported");
 }

@@ -61,24 +61,24 @@ static const char *TAG = "ESP_ZB_GARAGE";
 
 static sensor_func_pair_t sensor_func_pair[] = {
     {HA_BINARY_SENSOR_ENDPOINT_1, GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
-    {HA_BINARY_SENSOR_ENDPOINT_1, GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_ON, GPIO_INPUT_PU_NO},
-    {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
-    {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_ON, GPIO_INPUT_PU_NO}};
+    {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO}};
 
-static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
+static occupency_func_pair_t occupency_func_pair[] = {
+    {HA_OCCUPENCY_SENSOR_ENDPOINT_1, GPIO_NUM_2, GPIO_NUM_3, OCCUPENCY_TOGGLE_CONTROLL_OFF}};
+
+static void zb_binary_sensor_handler(sensor_func_pair_t *sensor_func_pair)
 {
-    if (button_func_pair->func == SENSOR_TOGGLE_CONTROLL_ON ||
-        button_func_pair->func == SENSOR_TOGGLE_CONTROLL_OFF)
+    if (esp_zb_bdb_dev_joined())
     {
         // Toggle the binary sensor state
-        bool sensor_state = button_func_pair->func == SENSOR_TOGGLE_CONTROLL_ON ? true : false;
+        bool sensor_state = sensor_func_pair->func == SENSOR_TOGGLE_CONTROLL_ON ? true : false;
 
         ESP_LOGI(TAG, "Sensor changed detected - state is: %s", sensor_state ? "On" : "Off");
 
         esp_zb_lock_acquire(portMAX_DELAY);
 
         // Update the attribute value
-        ESP_ERROR_CHECK(esp_zb_zcl_set_attribute_val(button_func_pair->endpoint,
+        ESP_ERROR_CHECK(esp_zb_zcl_set_attribute_val(sensor_func_pair->endpoint,
                                                      ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
                                                      ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                                                      ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
@@ -94,7 +94,7 @@ static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
 
         esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
             .zcl_basic_cmd = {
-                .src_endpoint = button_func_pair->endpoint,
+                .src_endpoint = sensor_func_pair->endpoint,
             },
             .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
             .clusterID = ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
@@ -109,10 +109,71 @@ static void zb_sensor_handler(sensor_func_pair_t *button_func_pair)
     }
 }
 
+static void zb_occupency_sensor_handler(occupency_func_pair_t *occupency_func_pair)
+{
+    // Check if we're connected to the network before trying to report
+    if (esp_zb_bdb_dev_joined())
+    {
+        bool occupency_state = (occupency_func_pair->func == OCCUPENCY_TOGGLE_CONTROLL_ON);
+
+        ESP_LOGI(TAG, "Occupancy changed detected - endpoint %d, state is: %s",
+                 occupency_func_pair->endpoint,
+                 occupency_state ? "Occupied" : "Unoccupied");
+
+        esp_zb_lock_acquire(portMAX_DELAY);
+
+        uint8_t occupancy_value = occupency_state ? ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED : ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
+
+        esp_zb_zcl_set_attribute_val(occupency_func_pair->endpoint,
+                                     ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+                                     ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+                                     &occupancy_value, false);
+
+        esp_zb_lock_release();
+
+        // Small delay before reporting
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // Report the attribute change
+        esp_zb_lock_acquire(portMAX_DELAY);
+
+        esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
+            .zcl_basic_cmd = {
+                .src_endpoint = occupency_func_pair->endpoint,
+            },
+            .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
+            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+            .attributeID = ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
+        };
+
+        esp_err_t err = esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd);
+
+        esp_zb_lock_release();
+
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to report occupancy attribute: %s", esp_err_to_name(err));
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Occupancy state reported to coordinator");
+        }
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Occupancy changed but device not joined to network yet, skipping report");
+    }
+}
+
 static esp_err_t deferred_driver_init(void)
 {
     relay_driver_init(RELAY_DEFAULT_OFF);
-    ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), zb_sensor_handler), ESP_FAIL, TAG,
+    ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), zb_binary_sensor_handler), ESP_FAIL, TAG,
+                        "Failed to initialize binary sensor");
+
+    ESP_RETURN_ON_FALSE(occupency_sensor_init(occupency_func_pair, OCCUPENCY_PAIR_SIZE(occupency_func_pair), zb_occupency_sensor_handler), ESP_FAIL, TAG,
                         "Failed to initialize binary sensor");
     return ESP_OK;
 }
@@ -254,6 +315,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                 {
                     ESP_LOGI(TAG, "Reporting initial sensor states after reboot");
                     binary_sensor_report_initial_states(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair));
+                    occupency_sensor_report_initial_states(occupency_func_pair, OCCUPENCY_PAIR_SIZE(occupency_func_pair));
                 }
             }
         }
