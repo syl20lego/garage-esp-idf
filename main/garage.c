@@ -57,12 +57,6 @@
 
 static const char *TAG = "ESP_ZB_GARAGE";
 /********************* Define functions **************************/
-typedef struct light_bulb_device_params_s
-{
-    esp_zb_ieee_addr_t ieee_addr;
-    uint8_t endpoint;
-    uint16_t short_addr;
-} light_bulb_device_params_t;
 
 static sensor_func_pair_t sensor_func_pair[] = {
     {HA_BINARY_SENSOR_ENDPOINT_1, GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
@@ -125,42 +119,6 @@ static esp_err_t deferred_driver_init(void)
 static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
 {
     ESP_RETURN_ON_FALSE(esp_zb_bdb_start_top_level_commissioning(mode_mask) == ESP_OK, , TAG, "Failed to start Zigbee commissioning");
-}
-
-static void bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
-{
-    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS)
-    {
-        ESP_LOGI(TAG, "Bound successfully!");
-        if (user_ctx)
-        {
-            light_bulb_device_params_t *light = (light_bulb_device_params_t *)user_ctx;
-            ESP_LOGI(TAG, "The light originating from address(0x%x) on endpoint(%d)", light->short_addr, light->endpoint);
-            free(light);
-        }
-    }
-}
-
-static void user_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoint, void *user_ctx)
-{
-    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS)
-    {
-        ESP_LOGI(TAG, "Found light");
-        esp_zb_zdo_bind_req_param_t bind_req;
-        light_bulb_device_params_t *light = (light_bulb_device_params_t *)malloc(sizeof(light_bulb_device_params_t));
-        light->endpoint = endpoint;
-        light->short_addr = addr;
-        esp_zb_ieee_address_by_short(light->short_addr, light->ieee_addr);
-        esp_zb_get_long_address(bind_req.src_address);
-        bind_req.src_endp = HA_RELAY_SENSOR_ENDPOINT_1;
-        bind_req.cluster_id = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF;
-        bind_req.dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
-        memcpy(bind_req.dst_address_u.addr_long, light->ieee_addr, sizeof(esp_zb_ieee_addr_t));
-        bind_req.dst_endp = endpoint;
-        bind_req.req_dst_addr = esp_zb_get_short_address();
-        ESP_LOGI(TAG, "Try to bind On/Off");
-        esp_zb_zdo_device_bind_req(&bind_req, bind_cb, (void *)light);
-    }
 }
 
 /**
@@ -273,7 +231,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         esp_zb_zdo_match_desc_req_param_t cmd_req;
         cmd_req.dst_nwk_addr = dev_annce_params->device_short_addr;
         cmd_req.addr_of_interest = dev_annce_params->device_short_addr;
-        esp_zb_zdo_find_on_off_light(&cmd_req, user_find_cb, NULL);
+        esp_zb_zdo_find_on_off_light(&cmd_req, relay_find_cb, NULL);
         break;
         /*
         This signal indicates the status of the network's permit join state.

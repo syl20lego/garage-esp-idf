@@ -69,6 +69,24 @@ extern "C"
     }
 
     /**
+     * @brief Callback when a relay device is found
+     *
+     * @param[in] zdo_status Status of the find operation
+     * @param[in] addr Short address of the found device
+     * @param[in] endpoint Endpoint of the found device
+     * @param[in] user_ctx User context (unused)
+     */
+    void relay_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoint, void *user_ctx);
+
+    /**
+     * @brief Callback when binding to a relay device
+     *
+     * @param[in] zdo_status Status of the bind operation
+     * @param[in] user_ctx User context containing relay device parameters
+     */
+    void relay_bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx);
+
+    /**
      * @brief Set relay power (on/off) with automatic pulse handling.
      *        When turned on, relay will pulse for 3 seconds then turn off.
      *

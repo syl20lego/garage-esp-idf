@@ -42,9 +42,76 @@
 #include "esp_zigbee_core.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "string.h"
 
 static const char *TAG = "GARAGE_DRIVER";
 static TaskHandle_t pulse_task_handle = NULL;
+
+typedef struct relay_device_params_s
+{
+    esp_zb_ieee_addr_t ieee_addr;
+    uint8_t endpoint;
+    uint16_t short_addr;
+} relay_device_params_t;
+
+void relay_bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
+{
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS)
+    {
+        ESP_LOGI(TAG, "Bound successfully!");
+        if (user_ctx)
+        {
+            relay_device_params_t *relay = (relay_device_params_t *)user_ctx;
+            ESP_LOGI(TAG, "The relay originating from address(0x%04x) on endpoint(%d)", relay->short_addr, relay->endpoint);
+            free(relay);
+        }
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Bind failed with status: 0x%02x", zdo_status);
+        if (user_ctx)
+        {
+            free(user_ctx);
+        }
+    }
+}
+
+void relay_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoint, void *user_ctx)
+{
+    if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS)
+    {
+        ESP_LOGI(TAG, "Found relay at address 0x%04x, endpoint %d", addr, endpoint);
+
+        esp_zb_zdo_bind_req_param_t bind_req;
+        relay_device_params_t *relay = (relay_device_params_t *)malloc(sizeof(relay_device_params_t));
+
+        if (relay == NULL)
+        {
+            ESP_LOGE(TAG, "Failed to allocate memory for relay device params");
+            return;
+        }
+
+        relay->endpoint = endpoint;
+        relay->short_addr = addr;
+        esp_zb_ieee_address_by_short(relay->short_addr, relay->ieee_addr);
+
+        // Set up bind request
+        esp_zb_get_long_address(bind_req.src_address);
+        bind_req.src_endp = HA_ESP_RELAY_ENDPOINT;
+        bind_req.cluster_id = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF;
+        bind_req.dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
+        memcpy(bind_req.dst_address_u.addr_long, relay->ieee_addr, sizeof(esp_zb_ieee_addr_t));
+        bind_req.dst_endp = endpoint;
+        bind_req.req_dst_addr = esp_zb_get_short_address();
+
+        ESP_LOGI(TAG, "Attempting to bind On/Off cluster");
+        esp_zb_zdo_device_bind_req(&bind_req, relay_bind_cb, (void *)relay);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Relay find failed with status: 0x%02x", zdo_status);
+    }
+}
 
 // Task to handle the relay pulse
 static void relay_pulse_task(void *arg)
