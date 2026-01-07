@@ -69,6 +69,8 @@ For any technical queries, please open an [issue](https://github.com/espressif/e
 
 ## Useful Commands
 
+`source ~/esp/esp-idf/export.sh` 
+
 `idf.py set-target esp32c6`
 
 `idf.py fullclean`

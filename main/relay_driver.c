@@ -36,7 +36,6 @@
  */
 
 #include "esp_log.h"
-#include "led_strip.h"
 #include "driver/gpio.h"
 #include "relay_driver.h"
 #include "esp_zigbee_core.h"

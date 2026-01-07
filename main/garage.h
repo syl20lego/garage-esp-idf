@@ -51,6 +51,10 @@
 #define HA_BINARY_SENSOR_ENDPOINT_2 3    /* esp binaray sensor device endpoint 2 */
 #define HA_OCCUPENCY_SENSOR_ENDPOINT_1 4 /* esp binaray sensor device endpoint 2 */
 
+/* LED configuration for Identify */
+#define BOARD_LED_GPIO GPIO_NUM_8        /* ESP32-C6 DevKit onboard LED */
+#define IDENTIFY_BLINK_PERIOD_MS 500     /* LED blink period during identify */
+
 /* Basic manufacturer information */
 #define ESP_MANUFACTURER_NAME "\x09" \
                               "ESPRESSIF" /* Customized manufacturer name */
