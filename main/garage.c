@@ -454,6 +454,19 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
             }
         }
     }
+    else if (message->info.dst_endpoint == HA_OCCUPENCY_SENSOR_ENDPOINT_1)
+    {
+        if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING)
+        {
+            if (message->attribute.id == ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESHOLD_ID &&
+                message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U8)
+            {
+                uint8_t threshold = message->attribute.data.value ? *(uint8_t *)message->attribute.data.value : 0;
+                ESP_LOGI(TAG, "Ultrasonic detection threshold set to %d cm via Zigbee", threshold);
+                occupency_sensor_set_threshold(threshold);
+            }
+        }
+    }
     return ret;
 }
 

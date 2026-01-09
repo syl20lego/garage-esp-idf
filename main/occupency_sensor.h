@@ -114,6 +114,20 @@ extern "C"
      */
     bool occupency_sensor_init(occupency_func_pair_t *sensor_func_pair, uint8_t sensor_num, esp_occupency_callback_t cb);
 
+    /**
+     * @brief Set the ultrasonic detection threshold
+     *
+     * @param threshold_cm Detection threshold in centimeters (1-254)
+     */
+    void occupency_sensor_set_threshold(uint8_t threshold_cm);
+
+    /**
+     * @brief Get the current ultrasonic detection threshold
+     *
+     * @return Current threshold in centimeters
+     */
+    uint8_t occupency_sensor_get_threshold(void);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

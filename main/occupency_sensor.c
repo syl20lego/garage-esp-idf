@@ -44,10 +44,10 @@
 #include "esp_rom_sys.h"
 
 #define ESP_INTR_FLAG_DEFAULT 0
-#define ULTRASONIC_MAX_TIMEOUT_US 30000      // 30ms timeout (increased from 25ms)
-#define ULTRASONIC_TRIGGER_PULSE_US 50       // 50us trigger pulse
-#define ULTRASONIC_DETECTION_DISTANCE_CM 100 // Detect objects within 100cm
-#define ULTRASONIC_MAX_DISTANCE_CM 400       // Maximum measurable distance (400cm = ~23ms round trip)
+#define ULTRASONIC_MAX_TIMEOUT_US 30000              // 30ms timeout (increased from 25ms)
+#define ULTRASONIC_TRIGGER_PULSE_US 50               // 50us trigger pulse
+#define ULTRASONIC_DETECTION_DISTANCE_CM_DEFAULT 100 // Default detection distance in cm
+#define ULTRASONIC_MAX_DISTANCE_CM 400               // Maximum measurable distance (400cm = ~23ms round trip)
 
 /* occupancy function pair, should be defined in switch example source file */
 static occupency_func_pair_t *occupency_func_pair;
@@ -55,6 +55,8 @@ static occupency_func_pair_t *occupency_func_pair;
 static esp_occupency_callback_t func_ptr;
 /* which button is pressed */
 static uint8_t switch_num;
+/* Ultrasonic detection threshold in cm (configurable via Zigbee) */
+static uint8_t ultrasonic_detection_threshold_cm = ULTRASONIC_DETECTION_DISTANCE_CM_DEFAULT;
 static const char *TAG = "ESP_ZB_OCCUPENCY";
 
 /**
@@ -113,6 +115,16 @@ esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_li
     // Occupancy Sensor Type attribute (enum8, 0x0001) - needs to be a pointer
     uint8_t sensor_type = ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_ULTRASONIC;
     esp_zb_occupancy_sensing_cluster_add_attr(input_cluster, ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_ID, &sensor_type);
+
+    // UltrasonicUnoccupiedToOccupiedThreshold attribute (uint8, 0x0022) - configurable via HA
+    // This represents the detection distance threshold in cm (1-254)
+    uint8_t threshold = ULTRASONIC_DETECTION_DISTANCE_CM_DEFAULT;
+    esp_zb_cluster_add_attr(input_cluster,
+                            ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+                            ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESHOLD_ID,
+                            ESP_ZB_ZCL_ATTR_TYPE_U8,
+                            ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE,
+                            &threshold);
 
     esp_zb_cluster_list_add_occupancy_sensing_cluster(cluster_list, input_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
@@ -325,8 +337,8 @@ static void occupency_sensor_task(void *arg)
                 consecutive_errors[i] = 0;
             }
 
-            // Determine occupancy state
-            occupency_sensor_state_t new_state = (distance <= ULTRASONIC_DETECTION_DISTANCE_CM) ? OCCUPENCY_DETECTED : OCCUPENCY_IDLE;
+            // Determine occupancy state using configurable threshold
+            occupency_sensor_state_t new_state = (distance <= ultrasonic_detection_threshold_cm) ? OCCUPENCY_DETECTED : OCCUPENCY_IDLE;
 
             ESP_LOGV(TAG, "Sensor %d (endpoint %d): distance=%ld cm, state=%s",
                      i, sensor->endpoint, distance,
@@ -427,7 +439,7 @@ void occupency_sensor_report_initial_states(occupency_func_pair_t *sensor_func_p
         int32_t distance = ultrasonic_measure_distance(sensor_func_pair_param[i].trigger,
                                                        sensor_func_pair_param[i].echo);
 
-        uint8_t occupancy = (distance >= 0 && distance < ULTRASONIC_DETECTION_DISTANCE_CM) ? ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED : ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
+        uint8_t occupancy = (distance >= 0 && distance < ultrasonic_detection_threshold_cm) ? ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED : ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
 
         uint8_t endpoint = sensor_func_pair_param[i].endpoint;
 
@@ -465,4 +477,25 @@ void occupency_sensor_report_initial_states(occupency_func_pair_t *sensor_func_p
     }
 
     ESP_LOGI(TAG, "Initial occupancy sensor states reported");
+}
+
+void occupency_sensor_set_threshold(uint8_t threshold_cm)
+{
+    // Validate range (1-254 as per ZCL spec)
+    if (threshold_cm < 1)
+    {
+        threshold_cm = 1;
+    }
+    else if (threshold_cm > 254)
+    {
+        threshold_cm = 254;
+    }
+
+    ultrasonic_detection_threshold_cm = threshold_cm;
+    ESP_LOGI(TAG, "Ultrasonic detection threshold set to %d cm", ultrasonic_detection_threshold_cm);
+}
+
+uint8_t occupency_sensor_get_threshold(void)
+{
+    return ultrasonic_detection_threshold_cm;
 }
