@@ -42,12 +42,17 @@
 #include "occupency_sensor.h"
 #include "esp_timer.h"
 #include "esp_rom_sys.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 #define ESP_INTR_FLAG_DEFAULT 0
 #define ULTRASONIC_MAX_TIMEOUT_US 30000              // 30ms timeout (increased from 25ms)
 #define ULTRASONIC_TRIGGER_PULSE_US 50               // 50us trigger pulse
 #define ULTRASONIC_DETECTION_DISTANCE_CM_DEFAULT 100 // Default detection distance in cm
 #define ULTRASONIC_MAX_DISTANCE_CM 400               // Maximum measurable distance (400cm = ~23ms round trip)
+
+#define NVS_NAMESPACE "occupancy"
+#define NVS_KEY_THRESHOLD "threshold"
 
 /* occupancy function pair, should be defined in switch example source file */
 static occupency_func_pair_t *occupency_func_pair;
@@ -71,6 +76,21 @@ static const char *TAG = "ESP_ZB_OCCUPENCY";
 */
 esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_occupency_sensor_cfg_t *sensor_cfg)
 {
+    // Load threshold from NVS BEFORE creating the Zigbee attribute
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (err == ESP_OK)
+    {
+        uint8_t saved_threshold = ULTRASONIC_DETECTION_DISTANCE_CM_DEFAULT;
+        err = nvs_get_u8(nvs_handle, NVS_KEY_THRESHOLD, &saved_threshold);
+        if (err == ESP_OK)
+        {
+            ultrasonic_detection_threshold_cm = saved_threshold;
+            ESP_LOGI(TAG, "Loaded threshold from NVS: %d cm", ultrasonic_detection_threshold_cm);
+        }
+        nvs_close(nvs_handle);
+    }
+
     // Create cluster list
     esp_zb_cluster_list_t *cluster_list = esp_zb_zcl_cluster_list_create();
 
@@ -118,7 +138,8 @@ esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_li
 
     // UltrasonicUnoccupiedToOccupiedThreshold attribute (uint8, 0x0022) - configurable via HA
     // This represents the detection distance threshold in cm (1-254)
-    uint8_t threshold = ULTRASONIC_DETECTION_DISTANCE_CM_DEFAULT;
+    // Use the value loaded from NVS (or default if not saved)
+    uint8_t threshold = ultrasonic_detection_threshold_cm;
     esp_zb_cluster_add_attr(input_cluster,
                             ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
                             ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_THRESHOLD_ID,
@@ -425,6 +446,30 @@ bool occupency_sensor_init(occupency_func_pair_t *sensor_func_pair, uint8_t sens
         return false;
     }
     func_ptr = cb;
+
+    // Load threshold from NVS if available
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (err == ESP_OK)
+    {
+        uint8_t saved_threshold = ULTRASONIC_DETECTION_DISTANCE_CM_DEFAULT;
+        err = nvs_get_u8(nvs_handle, NVS_KEY_THRESHOLD, &saved_threshold);
+        if (err == ESP_OK)
+        {
+            ultrasonic_detection_threshold_cm = saved_threshold;
+            ESP_LOGI(TAG, "Loaded threshold from NVS: %d cm", ultrasonic_detection_threshold_cm);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "No saved threshold in NVS, using default: %d cm", ultrasonic_detection_threshold_cm);
+        }
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGI(TAG, "NVS not available, using default threshold: %d cm", ultrasonic_detection_threshold_cm);
+    }
+
     ESP_LOGI(TAG, "Occupancy sensor driver initialized with %d HC-SR04 sensors", sensor_num);
     return true;
 }
@@ -493,6 +538,28 @@ void occupency_sensor_set_threshold(uint8_t threshold_cm)
 
     ultrasonic_detection_threshold_cm = threshold_cm;
     ESP_LOGI(TAG, "Ultrasonic detection threshold set to %d cm", ultrasonic_detection_threshold_cm);
+
+    // Save to NVS for persistence across reboots
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK)
+    {
+        err = nvs_set_u8(nvs_handle, NVS_KEY_THRESHOLD, threshold_cm);
+        if (err == ESP_OK)
+        {
+            nvs_commit(nvs_handle);
+            ESP_LOGI(TAG, "Threshold saved to NVS");
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Failed to save threshold to NVS: %s", esp_err_to_name(err));
+        }
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Failed to open NVS: %s", esp_err_to_name(err));
+    }
 }
 
 uint8_t occupency_sensor_get_threshold(void)
