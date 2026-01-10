@@ -56,8 +56,8 @@
 #define NVS_KEY_O2U_DELAY "o2u_delay"
 #define NVS_KEY_U2O_DELAY "u2o_delay"
 
-#define ULTRASONIC_O2U_DELAY_DEFAULT 0  // Default occupied-to-unoccupied delay in seconds
-#define ULTRASONIC_U2O_DELAY_DEFAULT 0  // Default unoccupied-to-occupied delay in seconds
+#define ULTRASONIC_O2U_DELAY_DEFAULT 0 // Default occupied-to-unoccupied delay in seconds
+#define ULTRASONIC_U2O_DELAY_DEFAULT 0 // Default unoccupied-to-occupied delay in seconds
 
 /* occupancy function pair, should be defined in switch example source file */
 static occupency_func_pair_t *occupency_func_pair;
@@ -125,7 +125,7 @@ esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_li
     esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
     /*
-    https://zigbeealliance.org/wp-content/uploads/2019/12/07-5123-06-zigbee-cluster-library-specification.pdf
+    https://zigbeealliance.org/wp-content/uploads/2021/10/07-5123-08-Zigbee-Cluster-Library.pdf
 
     Occupancy Sensing cluster
     4.8.1.3 Cluster Identifiers
@@ -158,10 +158,49 @@ esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_li
     // Occupancy attribute (map8, 0x0000)
     uint8_t occupancy = ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
     esp_zb_occupancy_sensing_cluster_add_attr(input_cluster, ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID, &occupancy);
+
+    /*
+     4.8.2.2.1.2 OccupancySensorType Attribute
+        The OccupancySensorType attribute specifies the type of the occupancy sensor. This attribute shall be set to
+        one of the non-reserved values listed in Table 4-22.
+        Attribute Value     Description
+        0x00                PIR
+        0x01                Ultrasonic
+        0x02                PIR and ultrasonic
+        0x03                Physical contact
+    */
     // Occupancy Sensor Type attribute (enum8, 0x0001) - needs to be a pointer
     uint8_t sensor_type = ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_ULTRASONIC;
     esp_zb_occupancy_sensing_cluster_add_attr(input_cluster, ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_ID, &sensor_type);
 
+    /*
+    4.8.2.2.1.3 OccupancySensorTypeBitmap Attribute
+        The OccupancySensorTypeBitmap attribute specifies the types of the occupancy sensor, as listed below; a
+        ‘1’ in each bit position indicates this type is implemented.
+        Bit Description
+        Bit0 PIR
+        Bit1 Ultrasonic
+        Bit2 Physical contact
+    */
+    // Occupancy Sensor Type Bitmap attribute for Ultrasonic 0000 0010
+    // uint8_t sensor_type_bitmap = 0x02;
+    // esp_zb_occupancy_sensing_cluster_add_attr(input_cluster, ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_BITMAP_ID, &sensor_type_bitmap);
+
+    /*
+    4.8.2.2.3 Ultrasonic Configuration Set
+        The ultrasonic sensor configuration attribute set contains the attributes summarized in Table 4-26
+        Id      Name                                    Type    Range           Acc     Def     MO
+        0x0020  UltrasonicOccupiedToUnoccupiedDelay     uint16  0x0000 – 0xfffe RW      0x00    O
+        0x0021  UltrasonicUnoccupiedToOccupiedDelay     uint16  0x0000 – 0xfffe RW      0x00    O
+        0x0022  UltrasonicUnoccupiedToOccupiedThreshold uint8   0x01 – 0xfe     RW      0x01    O
+    */
+
+    /*
+    4.8.2.2.3.1 UltrasonicOccupiedToUnoccupiedDelay Attribute
+        The UltrasonicOccupiedToUnoccupiedDelay attribute is 16 bits in length and specifies the time delay, in
+        seconds, before the Ultrasonic sensor changes to its unoccupied state after the last detection of movement in
+        the sensed area.
+    */
     // UltrasonicOccupiedToUnoccupiedDelay attribute (uint16, 0x0020) - configurable via HA
     // This represents the delay in seconds before transitioning from occupied to unoccupied
     uint16_t o2u_delay = ultrasonic_o2u_delay_s;
@@ -172,6 +211,12 @@ esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_li
                             ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE,
                             &o2u_delay);
 
+    /*
+    4.8.2.2.3.2 UltrasonicUnoccupiedToOccupiedDelay Attribute
+        The UltrasonicUnoccupiedToOccupiedDelay attribute is 16 bits in length and specifies the time delay, in
+        seconds, before the Ultrasonic sensor changes to its occupied state after the detection of movement in the
+        sensed area. This attribute is mandatory if the UltrasonicUnoccupiedToOccupiedThreshold attribute is im8073 plemented.
+    */
     // UltrasonicUnoccupiedToOccupiedDelay attribute (uint16, 0x0021) - configurable via HA
     // This represents the delay in seconds before transitioning from unoccupied to occupied
     uint16_t u2o_delay = ultrasonic_u2o_delay_s;
@@ -182,6 +227,12 @@ esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_li
                             ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE,
                             &u2o_delay);
 
+    /*
+    UltrasonicUnoccupiedToOccupiedThreshold Attribute
+        The UltrasonicUnoccupiedToOccupiedThreshold attribute is 8 bits in length and specifies the number of
+        movement detection events that must occur in the period UltrasonicUnoccupiedToOccupiedDelay, before
+        the Ultrasonic sensor changes to its occupied state. This attribute is mandatory if the UltrasonicUnoccu8078 piedToOccupiedDelay attribute is implemented.
+    */
     // UltrasonicUnoccupiedToOccupiedThreshold attribute (uint8, 0x0022) - configurable via HA
     // This represents the detection distance threshold in cm (1-254)
     // Use the value loaded from NVS (or default if not saved)
@@ -364,10 +415,10 @@ static int32_t ultrasonic_measure_distance(gpio_num_t trigger_pin, gpio_num_t ec
  */
 static void occupency_sensor_task(void *arg)
 {
-    static occupency_sensor_state_t previous_state[10] = {OCCUPENCY_IDLE};    // Support up to 10 sensors
-    static occupency_sensor_state_t raw_state[10] = {OCCUPENCY_IDLE};         // Raw detected state before delay
-    static int64_t state_change_time[10] = {0};                               // Time when raw state changed (in ms)
-    static int consecutive_errors[10] = {0};                                  // Track consecutive errors per sensor
+    static occupency_sensor_state_t previous_state[10] = {OCCUPENCY_IDLE}; // Support up to 10 sensors
+    static occupency_sensor_state_t raw_state[10] = {OCCUPENCY_IDLE};      // Raw detected state before delay
+    static int64_t state_change_time[10] = {0};                            // Time when raw state changed (in ms)
+    static int consecutive_errors[10] = {0};                               // Track consecutive errors per sensor
     static bool task_ready = false;
 
     // Wait for Zigbee stack to initialize
