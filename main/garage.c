@@ -70,7 +70,7 @@ static sensor_func_pair_t sensor_func_pair[] = {
     {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO}};
 
 static occupency_func_pair_t occupency_func_pair[] = {
-    {HA_OCCUPENCY_SENSOR_ENDPOINT_1, GPIO_NUM_2, GPIO_NUM_3, OCCUPENCY_TOGGLE_CONTROLL_OFF}};
+    {HA_OCCUPENCY_SENSOR_ENDPOINT_1, GPIO_NUM_2, GPIO_NUM_3, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
 
 /**
  * Initialize the onboard LED for Identify indication
@@ -216,7 +216,7 @@ static void zb_occupency_sensor_handler(occupency_func_pair_t *occupency_func_pa
     // Check if we're connected to the network before trying to report
     if (esp_zb_bdb_dev_joined())
     {
-        bool occupency_state = (occupency_func_pair->func == OCCUPENCY_TOGGLE_CONTROLL_ON);
+        bool occupency_state = (occupency_func_pair->func == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED);
 
         ESP_LOGI(TAG, "Occupancy changed detected - endpoint %d, state is: %s",
                  occupency_func_pair->endpoint,

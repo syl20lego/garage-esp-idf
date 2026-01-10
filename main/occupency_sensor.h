@@ -49,24 +49,12 @@ extern "C"
 
 #define OCCUPENCY_PAIR_SIZE(TYPE_STR_PAIR) (sizeof(TYPE_STR_PAIR) / sizeof(TYPE_STR_PAIR[0]))
 
-    typedef enum
-    {
-        OCCUPENCY_IDLE,
-        OCCUPENCY_DETECTED
-    } occupency_sensor_state_t;
-
-    typedef enum
-    {
-        OCCUPENCY_TOGGLE_CONTROLL_OFF = 0,
-        OCCUPENCY_TOGGLE_CONTROLL_ON = 1
-    } occupency_func_t;
-
     typedef struct
     {
         uint8_t endpoint;
         gpio_num_t trigger;
         gpio_num_t echo;
-        occupency_func_t func;
+        esp_zb_zcl_occupancy_sensing_occupancy_t func;
     } occupency_func_pair_t;
 
     typedef void (*esp_occupency_callback_t)(occupency_func_pair_t *param);

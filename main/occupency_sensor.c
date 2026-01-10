@@ -415,10 +415,10 @@ static int32_t ultrasonic_measure_distance(gpio_num_t trigger_pin, gpio_num_t ec
  */
 static void occupency_sensor_task(void *arg)
 {
-    static occupency_sensor_state_t previous_state[10] = {OCCUPENCY_IDLE}; // Support up to 10 sensors
-    static occupency_sensor_state_t raw_state[10] = {OCCUPENCY_IDLE};      // Raw detected state before delay
-    static int64_t state_change_time[10] = {0};                            // Time when raw state changed (in ms)
-    static int consecutive_errors[10] = {0};                               // Track consecutive errors per sensor
+    static esp_zb_zcl_occupancy_sensing_occupancy_t previous_state[10] = {ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}; // Support up to 10 sensors
+    static esp_zb_zcl_occupancy_sensing_occupancy_t raw_state[10] = {ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED};      // Raw detected state before delay
+    static int64_t state_change_time[10] = {0};                                                                               // Time when raw state changed (in ms)
+    static int consecutive_errors[10] = {0};                                                                                  // Track consecutive errors per sensor
     static bool task_ready = false;
 
     // Wait for Zigbee stack to initialize
@@ -460,12 +460,12 @@ static void occupency_sensor_task(void *arg)
             }
 
             // Determine raw occupancy state using configurable threshold
-            occupency_sensor_state_t detected_state = (distance <= ultrasonic_detection_threshold_cm) ? OCCUPENCY_DETECTED : OCCUPENCY_IDLE;
+            esp_zb_zcl_occupancy_sensing_occupancy_t detected_state = (distance <= ultrasonic_detection_threshold_cm) ? ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED : ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
 
             ESP_LOGV(TAG, "Sensor %d (endpoint %d): distance=%ld cm, raw_state=%s, reported_state=%s",
                      i, sensor->endpoint, distance,
-                     detected_state == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
-                     previous_state[i] == OCCUPENCY_IDLE ? "IDLE" : "DETECTED");
+                     detected_state == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED ? "UNOCCUPIED" : "OCCUPIED",
+                     previous_state[i] == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED ? "UNOCCUPIED" : "OCCUPIED");
 
             // Check if raw state changed
             if (detected_state != raw_state[i])
@@ -473,14 +473,14 @@ static void occupency_sensor_task(void *arg)
                 raw_state[i] = detected_state;
                 state_change_time[i] = current_time_ms;
                 ESP_LOGD(TAG, "Sensor %d raw state changed to %s, starting delay timer",
-                         i, detected_state == OCCUPENCY_IDLE ? "IDLE" : "DETECTED");
+                         i, detected_state == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED ? "UNOCCUPIED" : "OCCUPIED");
             }
 
             // Determine required delay based on transition direction
             uint16_t required_delay_s = 0;
             if (raw_state[i] != previous_state[i])
             {
-                if (raw_state[i] == OCCUPENCY_IDLE)
+                if (raw_state[i] == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED)
                 {
                     // Occupied -> Unoccupied transition
                     required_delay_s = ultrasonic_o2u_delay_s;
@@ -499,15 +499,15 @@ static void occupency_sensor_task(void *arg)
                 {
                     ESP_LOGI(TAG, "Occupancy state changed on endpoint %d: %s -> %s (distance: %ld cm, delay: %d s)",
                              sensor->endpoint,
-                             previous_state[i] == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
-                             raw_state[i] == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
+                             previous_state[i] == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED ? "UNOCCUPIED" : "OCCUPIED",
+                             raw_state[i] == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED ? "UNOCCUPIED" : "OCCUPIED",
                              distance,
                              required_delay_s);
 
                     previous_state[i] = raw_state[i];
 
                     // Update func field
-                    sensor->func = (raw_state[i] == OCCUPENCY_DETECTED) ? OCCUPENCY_TOGGLE_CONTROLL_ON : OCCUPENCY_TOGGLE_CONTROLL_OFF;
+                    sensor->func = raw_state[i];
 
                     // Call callback only if task is ready and we're past initialization
                     if (func_ptr && task_ready)
