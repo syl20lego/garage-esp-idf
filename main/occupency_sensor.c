@@ -53,6 +53,11 @@
 
 #define NVS_NAMESPACE "occupancy"
 #define NVS_KEY_THRESHOLD "threshold"
+#define NVS_KEY_O2U_DELAY "o2u_delay"
+#define NVS_KEY_U2O_DELAY "u2o_delay"
+
+#define ULTRASONIC_O2U_DELAY_DEFAULT 0  // Default occupied-to-unoccupied delay in seconds
+#define ULTRASONIC_U2O_DELAY_DEFAULT 0  // Default unoccupied-to-occupied delay in seconds
 
 /* occupancy function pair, should be defined in switch example source file */
 static occupency_func_pair_t *occupency_func_pair;
@@ -62,6 +67,10 @@ static esp_occupency_callback_t func_ptr;
 static uint8_t switch_num;
 /* Ultrasonic detection threshold in cm (configurable via Zigbee) */
 static uint8_t ultrasonic_detection_threshold_cm = ULTRASONIC_DETECTION_DISTANCE_CM_DEFAULT;
+/* Ultrasonic occupied-to-unoccupied delay in seconds (configurable via Zigbee) */
+static uint16_t ultrasonic_o2u_delay_s = ULTRASONIC_O2U_DELAY_DEFAULT;
+/* Ultrasonic unoccupied-to-occupied delay in seconds (configurable via Zigbee) */
+static uint16_t ultrasonic_u2o_delay_s = ULTRASONIC_U2O_DELAY_DEFAULT;
 static const char *TAG = "ESP_ZB_OCCUPENCY";
 
 /**
@@ -76,7 +85,7 @@ static const char *TAG = "ESP_ZB_OCCUPENCY";
 */
 esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_occupency_sensor_cfg_t *sensor_cfg)
 {
-    // Load threshold from NVS BEFORE creating the Zigbee attribute
+    // Load settings from NVS BEFORE creating the Zigbee attributes
     nvs_handle_t nvs_handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
     if (err == ESP_OK)
@@ -88,6 +97,23 @@ esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_li
             ultrasonic_detection_threshold_cm = saved_threshold;
             ESP_LOGI(TAG, "Loaded threshold from NVS: %d cm", ultrasonic_detection_threshold_cm);
         }
+
+        uint16_t saved_o2u_delay = ULTRASONIC_O2U_DELAY_DEFAULT;
+        err = nvs_get_u16(nvs_handle, NVS_KEY_O2U_DELAY, &saved_o2u_delay);
+        if (err == ESP_OK)
+        {
+            ultrasonic_o2u_delay_s = saved_o2u_delay;
+            ESP_LOGI(TAG, "Loaded O2U delay from NVS: %d s", ultrasonic_o2u_delay_s);
+        }
+
+        uint16_t saved_u2o_delay = ULTRASONIC_U2O_DELAY_DEFAULT;
+        err = nvs_get_u16(nvs_handle, NVS_KEY_U2O_DELAY, &saved_u2o_delay);
+        if (err == ESP_OK)
+        {
+            ultrasonic_u2o_delay_s = saved_u2o_delay;
+            ESP_LOGI(TAG, "Loaded U2O delay from NVS: %d s", ultrasonic_u2o_delay_s);
+        }
+
         nvs_close(nvs_handle);
     }
 
@@ -135,6 +161,26 @@ esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_li
     // Occupancy Sensor Type attribute (enum8, 0x0001) - needs to be a pointer
     uint8_t sensor_type = ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_ULTRASONIC;
     esp_zb_occupancy_sensing_cluster_add_attr(input_cluster, ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_ID, &sensor_type);
+
+    // UltrasonicOccupiedToUnoccupiedDelay attribute (uint16, 0x0020) - configurable via HA
+    // This represents the delay in seconds before transitioning from occupied to unoccupied
+    uint16_t o2u_delay = ultrasonic_o2u_delay_s;
+    esp_zb_cluster_add_attr(input_cluster,
+                            ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+                            ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY_ID,
+                            ESP_ZB_ZCL_ATTR_TYPE_U16,
+                            ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE,
+                            &o2u_delay);
+
+    // UltrasonicUnoccupiedToOccupiedDelay attribute (uint16, 0x0021) - configurable via HA
+    // This represents the delay in seconds before transitioning from unoccupied to occupied
+    uint16_t u2o_delay = ultrasonic_u2o_delay_s;
+    esp_zb_cluster_add_attr(input_cluster,
+                            ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+                            ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY_ID,
+                            ESP_ZB_ZCL_ATTR_TYPE_U16,
+                            ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE,
+                            &u2o_delay);
 
     // UltrasonicUnoccupiedToOccupiedThreshold attribute (uint8, 0x0022) - configurable via HA
     // This represents the detection distance threshold in cm (1-254)
@@ -318,8 +364,10 @@ static int32_t ultrasonic_measure_distance(gpio_num_t trigger_pin, gpio_num_t ec
  */
 static void occupency_sensor_task(void *arg)
 {
-    static occupency_sensor_state_t previous_state[10] = {OCCUPENCY_IDLE}; // Support up to 10 sensors
-    static int consecutive_errors[10] = {0};                               // Track consecutive errors per sensor
+    static occupency_sensor_state_t previous_state[10] = {OCCUPENCY_IDLE};    // Support up to 10 sensors
+    static occupency_sensor_state_t raw_state[10] = {OCCUPENCY_IDLE};         // Raw detected state before delay
+    static int64_t state_change_time[10] = {0};                               // Time when raw state changed (in ms)
+    static int consecutive_errors[10] = {0};                                  // Track consecutive errors per sensor
     static bool task_ready = false;
 
     // Wait for Zigbee stack to initialize
@@ -329,6 +377,8 @@ static void occupency_sensor_task(void *arg)
 
     while (1)
     {
+        int64_t current_time_ms = esp_timer_get_time() / 1000; // Current time in milliseconds
+
         for (int i = 0; i < switch_num; i++)
         {
             occupency_func_pair_t *sensor = &occupency_func_pair[i];
@@ -358,31 +408,66 @@ static void occupency_sensor_task(void *arg)
                 consecutive_errors[i] = 0;
             }
 
-            // Determine occupancy state using configurable threshold
-            occupency_sensor_state_t new_state = (distance <= ultrasonic_detection_threshold_cm) ? OCCUPENCY_DETECTED : OCCUPENCY_IDLE;
+            // Determine raw occupancy state using configurable threshold
+            occupency_sensor_state_t detected_state = (distance <= ultrasonic_detection_threshold_cm) ? OCCUPENCY_DETECTED : OCCUPENCY_IDLE;
 
-            ESP_LOGV(TAG, "Sensor %d (endpoint %d): distance=%ld cm, state=%s",
+            ESP_LOGV(TAG, "Sensor %d (endpoint %d): distance=%ld cm, raw_state=%s, reported_state=%s",
                      i, sensor->endpoint, distance,
-                     new_state == OCCUPENCY_IDLE ? "IDLE" : "DETECTED");
+                     detected_state == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
+                     previous_state[i] == OCCUPENCY_IDLE ? "IDLE" : "DETECTED");
 
-            // Only process if state changed
-            if (new_state != previous_state[i])
+            // Check if raw state changed
+            if (detected_state != raw_state[i])
             {
-                ESP_LOGI(TAG, "Occupancy state changed on endpoint %d: %s -> %s (distance: %ld cm)",
-                         sensor->endpoint,
-                         previous_state[i] == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
-                         new_state == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
-                         distance);
+                raw_state[i] = detected_state;
+                state_change_time[i] = current_time_ms;
+                ESP_LOGD(TAG, "Sensor %d raw state changed to %s, starting delay timer",
+                         i, detected_state == OCCUPENCY_IDLE ? "IDLE" : "DETECTED");
+            }
 
-                previous_state[i] = new_state;
-
-                // Update func field
-                sensor->func = (new_state == OCCUPENCY_DETECTED) ? OCCUPENCY_TOGGLE_CONTROLL_ON : OCCUPENCY_TOGGLE_CONTROLL_OFF;
-
-                // Call callback only if task is ready and we're past initialization
-                if (func_ptr && task_ready)
+            // Determine required delay based on transition direction
+            uint16_t required_delay_s = 0;
+            if (raw_state[i] != previous_state[i])
+            {
+                if (raw_state[i] == OCCUPENCY_IDLE)
                 {
-                    func_ptr(sensor);
+                    // Occupied -> Unoccupied transition
+                    required_delay_s = ultrasonic_o2u_delay_s;
+                }
+                else
+                {
+                    // Unoccupied -> Occupied transition
+                    required_delay_s = ultrasonic_u2o_delay_s;
+                }
+
+                // Check if delay has elapsed
+                int64_t elapsed_ms = current_time_ms - state_change_time[i];
+                int64_t required_delay_ms = (int64_t)required_delay_s * 1000;
+
+                if (elapsed_ms >= required_delay_ms)
+                {
+                    ESP_LOGI(TAG, "Occupancy state changed on endpoint %d: %s -> %s (distance: %ld cm, delay: %d s)",
+                             sensor->endpoint,
+                             previous_state[i] == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
+                             raw_state[i] == OCCUPENCY_IDLE ? "IDLE" : "DETECTED",
+                             distance,
+                             required_delay_s);
+
+                    previous_state[i] = raw_state[i];
+
+                    // Update func field
+                    sensor->func = (raw_state[i] == OCCUPENCY_DETECTED) ? OCCUPENCY_TOGGLE_CONTROLL_ON : OCCUPENCY_TOGGLE_CONTROLL_OFF;
+
+                    // Call callback only if task is ready and we're past initialization
+                    if (func_ptr && task_ready)
+                    {
+                        func_ptr(sensor);
+                    }
+                }
+                else
+                {
+                    ESP_LOGD(TAG, "Sensor %d waiting for delay: %lld ms / %lld ms",
+                             i, elapsed_ms, required_delay_ms);
                 }
             }
 
@@ -447,7 +532,7 @@ bool occupency_sensor_init(occupency_func_pair_t *sensor_func_pair, uint8_t sens
     }
     func_ptr = cb;
 
-    // Load threshold from NVS if available
+    // Load settings from NVS if available
     nvs_handle_t nvs_handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
     if (err == ESP_OK)
@@ -463,11 +548,37 @@ bool occupency_sensor_init(occupency_func_pair_t *sensor_func_pair, uint8_t sens
         {
             ESP_LOGI(TAG, "No saved threshold in NVS, using default: %d cm", ultrasonic_detection_threshold_cm);
         }
+
+        uint16_t saved_o2u_delay = ULTRASONIC_O2U_DELAY_DEFAULT;
+        err = nvs_get_u16(nvs_handle, NVS_KEY_O2U_DELAY, &saved_o2u_delay);
+        if (err == ESP_OK)
+        {
+            ultrasonic_o2u_delay_s = saved_o2u_delay;
+            ESP_LOGI(TAG, "Loaded O2U delay from NVS: %d s", ultrasonic_o2u_delay_s);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "No saved O2U delay in NVS, using default: %d s", ultrasonic_o2u_delay_s);
+        }
+
+        uint16_t saved_u2o_delay = ULTRASONIC_U2O_DELAY_DEFAULT;
+        err = nvs_get_u16(nvs_handle, NVS_KEY_U2O_DELAY, &saved_u2o_delay);
+        if (err == ESP_OK)
+        {
+            ultrasonic_u2o_delay_s = saved_u2o_delay;
+            ESP_LOGI(TAG, "Loaded U2O delay from NVS: %d s", ultrasonic_u2o_delay_s);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "No saved U2O delay in NVS, using default: %d s", ultrasonic_u2o_delay_s);
+        }
+
         nvs_close(nvs_handle);
     }
     else
     {
-        ESP_LOGI(TAG, "NVS not available, using default threshold: %d cm", ultrasonic_detection_threshold_cm);
+        ESP_LOGI(TAG, "NVS not available, using defaults: threshold=%d cm, O2U delay=%d s, U2O delay=%d s",
+                 ultrasonic_detection_threshold_cm, ultrasonic_o2u_delay_s, ultrasonic_u2o_delay_s);
     }
 
     ESP_LOGI(TAG, "Occupancy sensor driver initialized with %d HC-SR04 sensors", sensor_num);
@@ -565,4 +676,70 @@ void occupency_sensor_set_threshold(uint8_t threshold_cm)
 uint8_t occupency_sensor_get_threshold(void)
 {
     return ultrasonic_detection_threshold_cm;
+}
+
+void occupency_sensor_set_o2u_delay(uint16_t delay_s)
+{
+    ultrasonic_o2u_delay_s = delay_s;
+    ESP_LOGI(TAG, "Ultrasonic O2U delay set to %d s", ultrasonic_o2u_delay_s);
+
+    // Save to NVS for persistence across reboots
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK)
+    {
+        err = nvs_set_u16(nvs_handle, NVS_KEY_O2U_DELAY, delay_s);
+        if (err == ESP_OK)
+        {
+            nvs_commit(nvs_handle);
+            ESP_LOGI(TAG, "O2U delay saved to NVS");
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Failed to save O2U delay to NVS: %s", esp_err_to_name(err));
+        }
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Failed to open NVS: %s", esp_err_to_name(err));
+    }
+}
+
+uint16_t occupency_sensor_get_o2u_delay(void)
+{
+    return ultrasonic_o2u_delay_s;
+}
+
+void occupency_sensor_set_u2o_delay(uint16_t delay_s)
+{
+    ultrasonic_u2o_delay_s = delay_s;
+    ESP_LOGI(TAG, "Ultrasonic U2O delay set to %d s", ultrasonic_u2o_delay_s);
+
+    // Save to NVS for persistence across reboots
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK)
+    {
+        err = nvs_set_u16(nvs_handle, NVS_KEY_U2O_DELAY, delay_s);
+        if (err == ESP_OK)
+        {
+            nvs_commit(nvs_handle);
+            ESP_LOGI(TAG, "U2O delay saved to NVS");
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Failed to save U2O delay to NVS: %s", esp_err_to_name(err));
+        }
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Failed to open NVS: %s", esp_err_to_name(err));
+    }
+}
+
+uint16_t occupency_sensor_get_u2o_delay(void)
+{
+    return ultrasonic_u2o_delay_s;
 }

@@ -465,6 +465,20 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
                 ESP_LOGI(TAG, "Ultrasonic detection threshold set to %d cm via Zigbee", threshold);
                 occupency_sensor_set_threshold(threshold);
             }
+            else if (message->attribute.id == ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY_ID &&
+                     message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16)
+            {
+                uint16_t delay = message->attribute.data.value ? *(uint16_t *)message->attribute.data.value : 0;
+                ESP_LOGI(TAG, "Ultrasonic O2U delay set to %d s via Zigbee", delay);
+                occupency_sensor_set_o2u_delay(delay);
+            }
+            else if (message->attribute.id == ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY_ID &&
+                     message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16)
+            {
+                uint16_t delay = message->attribute.data.value ? *(uint16_t *)message->attribute.data.value : 0;
+                ESP_LOGI(TAG, "Ultrasonic U2O delay set to %d s via Zigbee", delay);
+                occupency_sensor_set_u2o_delay(delay);
+            }
         }
     }
     return ret;

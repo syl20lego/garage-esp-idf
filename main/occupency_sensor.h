@@ -128,6 +128,34 @@ extern "C"
      */
     uint8_t occupency_sensor_get_threshold(void);
 
+    /**
+     * @brief Set the ultrasonic occupied-to-unoccupied delay
+     *
+     * @param delay_s Delay in seconds (0-65534)
+     */
+    void occupency_sensor_set_o2u_delay(uint16_t delay_s);
+
+    /**
+     * @brief Get the current ultrasonic occupied-to-unoccupied delay
+     *
+     * @return Current delay in seconds
+     */
+    uint16_t occupency_sensor_get_o2u_delay(void);
+
+    /**
+     * @brief Set the ultrasonic unoccupied-to-occupied delay
+     *
+     * @param delay_s Delay in seconds (0-65534)
+     */
+    void occupency_sensor_set_u2o_delay(uint16_t delay_s);
+
+    /**
+     * @brief Get the current ultrasonic unoccupied-to-occupied delay
+     *
+     * @return Current delay in seconds
+     */
+    uint16_t occupency_sensor_get_u2o_delay(void);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
