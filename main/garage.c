@@ -436,7 +436,16 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     }
 }
 
-static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t *message)
+/**
+ * The garage_set_attribute_handler function processes incoming Zigbee attribute set messages.
+ * It checks the destination endpoint, cluster ID, and attribute ID to determine the appropriate action to take.
+ * For relay control, it sets the relay state based on the received attribute value.
+ * For ultrasonic sensor configuration, it updates the sensor's threshold and delay settings.
+ *
+ * @param message A pointer to the esp_zb_zcl_set_attr_value_message_t structure containing the attribute set message.
+ * @return An esp_err_t indicating the success or failure of the attribute handling.
+ */
+static esp_err_t garage_set_attribute_handler(const esp_zb_zcl_set_attr_value_message_t *message)
 {
     esp_err_t ret = ESP_OK;
     bool relay_state = 0;
@@ -488,13 +497,20 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
     return ret;
 }
 
-static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message)
+/**
+ * The garage_action_handler function processes all the various Zigbee actions based on the callback ID.
+ * It handles setting attribute values, reporting attributes, default responses, and identify effects.
+ * @param callback_id The callback ID indicating the type of action to handle.
+ * @param message A pointer to the message associated with the action.
+ * @return An esp_err_t indicating the success or failure of the action handling.
+ */
+static esp_err_t garage_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message)
 {
     esp_err_t ret = ESP_OK;
     switch (callback_id)
     {
     case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
-        ret = zb_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
+        ret = garage_set_attribute_handler((esp_zb_zcl_set_attr_value_message_t *)message);
         break;
     case ESP_ZB_CORE_REPORT_ATTR_CB_ID:
         // Handle report attribute callback
@@ -578,7 +594,7 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_device_register(esp_zb_ep_list);
 
     // Register device and start Zigbee stack
-    esp_zb_core_action_handler_register(zb_action_handler);
+    esp_zb_core_action_handler_register(garage_action_handler);
 
     // Register identify notification handler for LED indication on each endpoint
     esp_zb_identify_notify_handler_register(HA_RELAY_ENDPOINT, zb_identify_notify_handler);
