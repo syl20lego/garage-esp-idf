@@ -72,6 +72,9 @@ static sensor_func_pair_t sensor_func_pair[] = {
 static ultrasonic_sensor_func_pair_t ultrasonic_sensor_func_pair[] = {
     {HA_ULTRASONIC_SENSOR_ENDPOINT_1, GPIO_NUM_2, GPIO_NUM_3, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
 
+static relay_func_pair_t relay_func_pair[] = {
+    {HA_RELAY_ENDPOINT, GPIO_NUM_23, NULL}};
+
 /**
  * Initialize the onboard LED for Identify indication
  */
@@ -274,7 +277,8 @@ static esp_err_t deferred_driver_init(void)
     // Initialize LED for Identify functionality
     identify_led_init();
 
-    relay_driver_init(RELAY_DEFAULT_OFF);
+    relay_driver_init(relay_func_pair, RELAY_PAIR_SIZE(relay_func_pair));
+
     ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), zb_binary_sensor_handler), ESP_FAIL, TAG,
                         "Failed to initialize binary sensor");
 
@@ -442,7 +446,7 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
                         message->info.status);
     ESP_LOGI(TAG, "Received message: endpoint(%d), cluster(0x%x), attribute(0x%x), data size(%d)", message->info.dst_endpoint, message->info.cluster,
              message->attribute.id, message->attribute.data.size);
-    if (message->info.dst_endpoint == HA_ESP_RELAY_ENDPOINT)
+    if (message->info.dst_endpoint == HA_RELAY_ENDPOINT)
     {
         if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_ON_OFF)
         {
@@ -530,45 +534,59 @@ static void esp_zb_task(void *pvParameters)
         .model_identifier = ESP_MODEL_IDENTIFIER,
     };
 
-    // Create a single endpoint list with both endpoints
+    /*
+    Create a single endpoint list for the device to register all endpoints
+    Note: Endpoing order in the list defines the order of device signature during network joining process.
+    */
     esp_zb_ep_list_t *esp_zb_ep_list = esp_zb_ep_list_create();
 
-    esp_zb_ep_on_off_light_cfg_t light_cfg = ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(HA_ESP_RELAY_ENDPOINT);
-    garage_on_off_relay_ep_create(esp_zb_ep_list, &light_cfg);
-
-    // Create binary sensor endpoint
+    /*
+    Endpoint 1 Binary Sensor devices
+    */
     static char garage_door_name1[] = "\x0d"
                                       "Garage Door 1";
     esp_zb_binary_sensor_cfg_t sensor_cfg1 = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT_1, garage_door_name1);
     garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg1);
 
-    // Create binary sensor endpoint
+    /*
+    Endpoint 2 Binary Sensor devices
+    */
     static char garage_door_name2[] = "\x0d"
                                       "Garage Door 2";
     esp_zb_binary_sensor_cfg_t sensor_cfg2 = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT_2, garage_door_name2);
     garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg2);
 
+    /*
+    Endpoint 3 Ultrasonic Sensor device
+    */
     esp_zb_ultrasonic_sensor_cfg_t ultrasonic_cfg = ESP_ZB_DEFAULT_ULTRASONIC_SENSOR_CONFIG(HA_ULTRASONIC_SENSOR_ENDPOINT_1);
     garage_ultrasonic_sensor_ep_create(esp_zb_ep_list, &ultrasonic_cfg);
 
-    // Add manufacturer info to both endpoints
-    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ESP_RELAY_ENDPOINT, &info);
+    /*
+    Endpoint 10 for Relay device
+    */
+    esp_zb_ep_on_off_light_cfg_t light_cfg = ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(HA_RELAY_ENDPOINT);
+    garage_on_off_relay_ep_create(esp_zb_ep_list, &light_cfg);
+
+    // Add manufacturer info to all endpoints
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_RELAY_ENDPOINT, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_1, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_2, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ULTRASONIC_SENSOR_ENDPOINT_1, &info);
 
-    // Register the single device with both endpoints
+    // Register the single device with all endpoints
     esp_zb_device_register(esp_zb_ep_list);
 
     // Register device and start Zigbee stack
     esp_zb_core_action_handler_register(zb_action_handler);
 
     // Register identify notification handler for LED indication on each endpoint
-    esp_zb_identify_notify_handler_register(HA_ESP_RELAY_ENDPOINT, zb_identify_notify_handler);
+    esp_zb_identify_notify_handler_register(HA_RELAY_ENDPOINT, zb_identify_notify_handler);
     esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_1, zb_identify_notify_handler);
     esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_2, zb_identify_notify_handler);
     esp_zb_identify_notify_handler_register(HA_ULTRASONIC_SENSOR_ENDPOINT_1, zb_identify_notify_handler);
 
+    // Set primary channel mask and start the Zigbee stack
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_stack_main_loop();

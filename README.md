@@ -67,6 +67,10 @@ I (11618) ESP_ZB_ON_OFF_LIGHT: Light sets to Off
 For any technical queries, please open an [issue](https://github.com/espressif/esp-idf/issues) on GitHub. We will get back to you soon.
 
 
+# Todo
+
+See if we can implement RSSI (3.13 RSSI Location): 
+
 ## Useful Commands
 
 `source ~/esp/esp-idf/export.sh` 

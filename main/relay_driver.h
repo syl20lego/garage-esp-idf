@@ -46,20 +46,9 @@ extern "C"
 {
 #endif
 
-#define HA_ESP_RELAY_ENDPOINT 10 /* esp light bulb device endpoint, used to process light controlling commands */
-
-#define GARAGE_RELAY_GPIO GPIO_NUM_23
-
 /* light intensity level */
 #define RELAY_DEFAULT_ON 1
 #define RELAY_DEFAULT_OFF 0
-
-    // Extended config struct that includes endpoint configuration
-    typedef struct
-    {
-        esp_zb_on_off_light_cfg_t light_cfg;
-        uint8_t endpoint;
-    } esp_zb_ep_on_off_light_cfg_t;
 
 // Macro to create default config with endpoint
 #define ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(ep)          \
@@ -68,23 +57,28 @@ extern "C"
         .endpoint = ep,                                    \
     }
 
-    /**
-     * @brief Callback when a relay device is found
-     *
-     * @param[in] zdo_status Status of the find operation
-     * @param[in] addr Short address of the found device
-     * @param[in] endpoint Endpoint of the found device
-     * @param[in] user_ctx User context (unused)
-     */
-    void relay_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoint, void *user_ctx);
+#define RELAY_PAIR_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
+
+    typedef struct relay_func_pair_s
+    {
+        uint8_t endpoint;
+        gpio_num_t gpio;
+        TaskHandle_t pulse_task_handle;
+    } relay_func_pair_t;
+
+    // Extended config struct that includes endpoint configuration
+    typedef struct
+    {
+        esp_zb_on_off_light_cfg_t light_cfg;
+        uint8_t endpoint;
+    } esp_zb_ep_on_off_light_cfg_t;
 
     /**
-     * @brief Callback when binding to a relay device
-     *
-     * @param[in] zdo_status Status of the bind operation
-     * @param[in] user_ctx User context containing relay device parameters
+     * @brief Initialize relay driver with multiple relays
+     * @param relay_pairs Array of relay configurations
+     * @param relay_pair_count Number of relays in the array
      */
-    void relay_bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx);
+    void relay_driver_init(relay_func_pair_t *relay_pairs, uint8_t relay_pair_count);
 
     /**
      * @brief Set relay power (on/off) with automatic pulse handling.
@@ -96,11 +90,22 @@ extern "C"
     void relay_driver_set_power(bool power, uint8_t endpoint);
 
     /**
-     * @brief Relay driver init, be invoked where you want to use relay
+     * @brief Callback when binding to a relay device
      *
-     * @param power power on/off (should be false for relay applications)
+     * @param[in] zdo_status Status of the bind operation
+     * @param[in] user_ctx User context containing relay device parameters
      */
-    void relay_driver_init(bool power);
+    void relay_bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx);
+
+    /**
+     * @brief Callback when a relay device is found
+     *
+     * @param[in] zdo_status Status of the find operation
+     * @param[in] addr Short address of the found device
+     * @param[in] endpoint Endpoint of the found device
+     * @param[in] user_ctx User context (unused)
+     */
+    void relay_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoint, void *user_ctx);
 
     /**
      * @brief Create on/off light endpoint with configuration

@@ -44,7 +44,10 @@
 #include "string.h"
 
 static const char *TAG = "GARAGE_DRIVER";
-static TaskHandle_t pulse_task_handle = NULL;
+
+// Store relay configurations
+static relay_func_pair_t *s_relay_pairs = NULL;
+static uint8_t s_relay_pair_count = 0;
 
 typedef struct relay_device_params_s
 {
@@ -52,6 +55,40 @@ typedef struct relay_device_params_s
     uint8_t endpoint;
     uint16_t short_addr;
 } relay_device_params_t;
+
+typedef struct relay_pulse_task_params_s
+{
+    uint8_t endpoint;
+    gpio_num_t gpio;
+    relay_func_pair_t *relay_pair;
+} relay_pulse_task_params_t;
+
+/**
+ * @brief Find relay pair by endpoint
+ */
+static relay_func_pair_t *find_relay_by_endpoint(uint8_t endpoint)
+{
+    for (uint8_t i = 0; i < s_relay_pair_count; i++)
+    {
+        if (s_relay_pairs[i].endpoint == endpoint)
+        {
+            return &s_relay_pairs[i];
+        }
+    }
+    return NULL;
+}
+
+/**
+ * @brief Get the first relay endpoint (for binding purposes)
+ */
+static uint8_t get_first_relay_endpoint(void)
+{
+    if (s_relay_pair_count > 0 && s_relay_pairs != NULL)
+    {
+        return s_relay_pairs[0].endpoint;
+    }
+    return 0;
+}
 
 void relay_bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
 {
@@ -96,7 +133,9 @@ void relay_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoi
 
         // Set up bind request
         esp_zb_get_long_address(bind_req.src_address);
-        bind_req.src_endp = HA_ESP_RELAY_ENDPOINT;
+
+        bind_req.src_endp = get_first_relay_endpoint();
+
         bind_req.cluster_id = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF;
         bind_req.dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
         memcpy(bind_req.dst_address_u.addr_long, relay->ieee_addr, sizeof(esp_zb_ieee_addr_t));
@@ -115,19 +154,22 @@ void relay_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoi
 // Task to handle the relay pulse
 static void relay_pulse_task(void *arg)
 {
-    uint8_t endpoint = (uint8_t)(uintptr_t)arg;
+    relay_pulse_task_params_t *params = (relay_pulse_task_params_t *)arg;
+    uint8_t endpoint = params->endpoint;
+    gpio_num_t gpio = params->gpio;
+    relay_func_pair_t *relay_pair = params->relay_pair;
 
-    ESP_LOGI(TAG, "Relay pulse started - GPIO LOW for 3 seconds");
+    ESP_LOGI(TAG, "Relay pulse started - GPIO %d LOW for 3 seconds (endpoint %d)", gpio, endpoint);
 
     // Set GPIO LOW (relay ON)
-    gpio_set_level(GARAGE_RELAY_GPIO, 0);
+    gpio_set_level(gpio, 0);
 
     // Wait 3 seconds
     vTaskDelay(pdMS_TO_TICKS(3000));
 
     // Set GPIO HIGH (relay OFF)
-    gpio_set_level(GARAGE_RELAY_GPIO, 1);
-    ESP_LOGI(TAG, "Relay pulse ended - GPIO HIGH (relay OFF)");
+    gpio_set_level(gpio, 1);
+    ESP_LOGI(TAG, "Relay pulse ended - GPIO %d HIGH (relay OFF)", gpio);
 
     // Update the on/off attribute to OFF
     esp_zb_lock_acquire(portMAX_DELAY);
@@ -161,65 +203,102 @@ static void relay_pulse_task(void *arg)
 
     esp_zb_lock_release();
 
-    ESP_LOGI(TAG, "Reported OFF state to Home Assistant");
+    ESP_LOGI(TAG, "Reported OFF state to Home Assistant for endpoint %d", endpoint);
 
     // Clean up task handle
-    pulse_task_handle = NULL;
+    if (relay_pair != NULL)
+    {
+        relay_pair->pulse_task_handle = NULL;
+    }
+
+    // Free the params
+    free(params);
+
     vTaskDelete(NULL);
 }
 
 void relay_driver_set_power(bool power, uint8_t endpoint)
 {
+    relay_func_pair_t *relay_pair = find_relay_by_endpoint(endpoint);
+
+    if (relay_pair == NULL)
+    {
+        ESP_LOGE(TAG, "No relay found for endpoint %d", endpoint);
+        return;
+    }
+
     if (power)
     {
         // If a pulse task is already running, don't start another
-        if (pulse_task_handle != NULL)
+        if (relay_pair->pulse_task_handle != NULL)
         {
-            ESP_LOGW(TAG, "Relay pulse already in progress, ignoring new request");
+            ESP_LOGW(TAG, "Relay pulse already in progress for endpoint %d, ignoring new request", endpoint);
             return;
         }
 
-        ESP_LOGI(TAG, "Starting relay pulse task");
+        ESP_LOGI(TAG, "Starting relay pulse task for endpoint %d, GPIO %d", endpoint, relay_pair->gpio);
+
+        // Allocate params for the task
+        relay_pulse_task_params_t *params = malloc(sizeof(relay_pulse_task_params_t));
+        if (params == NULL)
+        {
+            ESP_LOGE(TAG, "Failed to allocate memory for pulse task params");
+            return;
+        }
+        params->endpoint = endpoint;
+        params->gpio = relay_pair->gpio;
+        params->relay_pair = relay_pair;
 
         // Create task to handle the 3-second pulse
-        xTaskCreate(relay_pulse_task, "relay_pulse", 2048, (void *)(uintptr_t)endpoint, 5, &pulse_task_handle);
+        xTaskCreate(relay_pulse_task, "relay_pulse", 2048, (void *)params, 5, &relay_pair->pulse_task_handle);
     }
     else
     {
         // If power is OFF, cancel any running pulse task
-        if (pulse_task_handle != NULL)
+        if (relay_pair->pulse_task_handle != NULL)
         {
-            ESP_LOGI(TAG, "Cancelling relay pulse task");
-            vTaskDelete(pulse_task_handle);
-            pulse_task_handle = NULL;
+            ESP_LOGI(TAG, "Cancelling relay pulse task for endpoint %d", endpoint);
+            vTaskDelete(relay_pair->pulse_task_handle);
+            relay_pair->pulse_task_handle = NULL;
         }
 
         // Set GPIO HIGH (relay OFF)
-        gpio_set_level(GARAGE_RELAY_GPIO, 1);
-        ESP_LOGI(TAG, "Relay turned OFF manually");
+        gpio_set_level(relay_pair->gpio, 1);
+        ESP_LOGI(TAG, "Relay turned OFF manually for endpoint %d, GPIO %d", endpoint, relay_pair->gpio);
     }
 }
 
-void relay_driver_init(bool power)
+void relay_driver_init(relay_func_pair_t *relay_pairs, uint8_t relay_pair_count)
 {
-    // Configure GPIO 23 as output
-    gpio_reset_pin(GARAGE_RELAY_GPIO);
-    /* Set the GPIO as a push/pull output */
-    gpio_set_direction(GARAGE_RELAY_GPIO, GPIO_MODE_OUTPUT);
+    // Store relay configurations
+    s_relay_pairs = relay_pairs;
+    s_relay_pair_count = relay_pair_count;
 
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << GARAGE_RELAY_GPIO),
-        .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&io_conf);
+    for (uint8_t i = 0; i < relay_pair_count; i++)
+    {
+        gpio_num_t gpio = relay_pairs[i].gpio;
 
-    // Set initial state to HIGH (relay OFF)
-    gpio_set_level(GARAGE_RELAY_GPIO, 1);
+        // Initialize task handle to NULL
+        relay_pairs[i].pulse_task_handle = NULL;
 
-    ESP_LOGI(TAG, "Garage relay GPIO initialized on pin %d", GARAGE_RELAY_GPIO);
+        // Configure GPIO as output
+        gpio_reset_pin(gpio);
+        gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
+
+        gpio_config_t io_conf = {
+            .pin_bit_mask = (1ULL << gpio),
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        gpio_config(&io_conf);
+
+        // Set initial state to HIGH (relay OFF)
+        gpio_set_level(gpio, 1);
+
+        ESP_LOGI(TAG, "Relay GPIO initialized on pin %d for endpoint %d", gpio, relay_pairs[i].endpoint);
+    }
 }
 
 esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *esp_zb_ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg)
