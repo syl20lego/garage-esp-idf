@@ -44,16 +44,16 @@
 #define ED_KEEP_ALIVE 3000                                               /* 3000 millisecond */
 #define ESP_ZB_PRIMARY_CHANNEL_MASK ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK /* Zigbee primary channel mask use in the example */
 
-#define MAX_CHILDREN 10                  /* the max amount of connected devices */
-#define INSTALLCODE_POLICY_ENABLE false  /* enable the install code policy for security */
-#define HA_RELAY_SENSOR_ENDPOINT_1 1     /* esp relay sensor device endpoint 1 */
-#define HA_BINARY_SENSOR_ENDPOINT_1 2    /* esp binaray sensor device endpoint 1 */
-#define HA_BINARY_SENSOR_ENDPOINT_2 3    /* esp binaray sensor device endpoint 2 */
-#define HA_OCCUPENCY_SENSOR_ENDPOINT_1 4 /* esp binaray sensor device endpoint 2 */
+#define MAX_CHILDREN 10                   /* the max amount of connected devices */
+#define INSTALLCODE_POLICY_ENABLE false   /* enable the install code policy for security */
+#define HA_RELAY_SENSOR_ENDPOINT_1 1      /* esp relay sensor device endpoint 1 */
+#define HA_BINARY_SENSOR_ENDPOINT_1 2     /* esp binaray sensor device endpoint 1 */
+#define HA_BINARY_SENSOR_ENDPOINT_2 3     /* esp binaray sensor device endpoint 2 */
+#define HA_ULTRASONIC_SENSOR_ENDPOINT_1 4 /* esp ultrasonic sensor device endpoint 1 */
 
 /* LED configuration for Identify */
-#define BOARD_LED_GPIO GPIO_NUM_8        /* ESP32-C6 DevKit onboard LED */
-#define IDENTIFY_BLINK_PERIOD_MS 500     /* LED blink period during identify */
+#define BOARD_LED_GPIO GPIO_NUM_8    /* ESP32-C6 DevKit onboard LED */
+#define IDENTIFY_BLINK_PERIOD_MS 500 /* LED blink period during identify */
 
 /* Basic manufacturer information */
 #define ESP_MANUFACTURER_NAME "\x09" \

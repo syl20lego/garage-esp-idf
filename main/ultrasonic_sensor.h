@@ -47,7 +47,7 @@ extern "C"
 
 #define ESP_ZB_HA_OCCUPANCY_SENSOR_DEVICE_ID 0x0107
 
-#define OCCUPENCY_PAIR_SIZE(TYPE_STR_PAIR) (sizeof(TYPE_STR_PAIR) / sizeof(TYPE_STR_PAIR[0]))
+#define ULTRASONIC_SENSOR_PAIR_SIZE(TYPE_STR_PAIR) (sizeof(TYPE_STR_PAIR) / sizeof(TYPE_STR_PAIR[0]))
 
     typedef struct
     {
@@ -55,11 +55,11 @@ extern "C"
         gpio_num_t trigger;
         gpio_num_t echo;
         esp_zb_zcl_occupancy_sensing_occupancy_t func;
-    } occupency_func_pair_t;
+    } ultrasonic_sensor_func_pair_t;
 
-    typedef void (*esp_occupency_callback_t)(occupency_func_pair_t *param);
+    typedef void (*esp_ultrasonic_sensor_callback_t)(ultrasonic_sensor_func_pair_t *param);
 
-#define ESP_ZB_DEFAULT_OCCCUPENCY_SENSOR_CONFIG(ep)                          \
+#define ESP_ZB_DEFAULT_ULTRASONIC_SENSOR_CONFIG(ep)                          \
     {                                                                        \
         .basic_cfg =                                                         \
             {                                                                \
@@ -75,74 +75,74 @@ extern "C"
         esp_zb_basic_cluster_cfg_t basic_cfg;
         uint8_t endpoint;
         char *sensor_name; // This field name must match what's in the macro
-    } esp_zb_occupency_sensor_cfg_t;
+    } esp_zb_ultrasonic_sensor_cfg_t;
 
     /**
-     * @brief Create occupency sensor endpoint
+     * @brief Create ultrasonic sensor endpoint
      *
-     * @param[in] occupency_cfg Configuration for occupency sensor
-     * @return Endpoint list with occupency sensor configuration
+     * @param[in] sensor_cfg Configuration for ultrasonic sensor
+     * @return Endpoint list with ultrasonic sensor configuration
      */
-    esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_occupency_sensor_cfg_t *sensor_cfg);
+    esp_zb_cluster_list_t *garage_ultrasonic_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ultrasonic_sensor_cfg_t *sensor_cfg);
 
     /**
-     * @brief Report initial occupancy sensor states (call after Zigbee network is ready)
+     * @brief Report initial ultrasonic sensor states (call after Zigbee network is ready)
      *
      * @param[in] sensor_func_pair Array of sensor configurations
      * @param[in] sensor_num Number of sensors
      */
-    void occupency_sensor_report_initial_states(occupency_func_pair_t *sensor_func_pair, uint8_t sensor_num);
+    void ultrasonic_sensor_report_initial_states(ultrasonic_sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num);
 
     /**
-     * @brief init function for occupency sensor and callback setup
+     * @brief init function for ultrasonic sensor and callback setup
      *
-     * @param sensor_func_pair      pointer of the occupency pair.
-     * @param sensor_num            number of occupency pair.
+     * @param sensor_func_pair      pointer of the ultrasonic sensor pair.
+     * @param sensor_num            number of ultrasonic sensor pair.
      * @param cb                    callback pointer.
      */
-    bool occupency_sensor_init(occupency_func_pair_t *sensor_func_pair, uint8_t sensor_num, esp_occupency_callback_t cb);
+    bool ultrasonic_sensor_init(ultrasonic_sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num, esp_ultrasonic_sensor_callback_t cb);
 
     /**
      * @brief Set the ultrasonic detection threshold
      *
      * @param threshold_cm Detection threshold in centimeters (1-254)
      */
-    void occupency_sensor_set_threshold(uint8_t threshold_cm);
+    void ultrasonic_sensor_set_threshold(uint8_t threshold_cm);
 
     /**
      * @brief Get the current ultrasonic detection threshold
      *
      * @return Current threshold in centimeters
      */
-    uint8_t occupency_sensor_get_threshold(void);
+    uint8_t ultrasonic_sensor_get_threshold(void);
 
     /**
      * @brief Set the ultrasonic occupied-to-unoccupied delay
      *
      * @param delay_s Delay in seconds (0-65534)
      */
-    void occupency_sensor_set_o2u_delay(uint16_t delay_s);
+    void ultrasonic_sensor_set_o2u_delay(uint16_t delay_s);
 
     /**
      * @brief Get the current ultrasonic occupied-to-unoccupied delay
      *
      * @return Current delay in seconds
      */
-    uint16_t occupency_sensor_get_o2u_delay(void);
+    uint16_t ultrasonic_sensor_get_o2u_delay(void);
 
     /**
      * @brief Set the ultrasonic unoccupied-to-occupied delay
      *
      * @param delay_s Delay in seconds (0-65534)
      */
-    void occupency_sensor_set_u2o_delay(uint16_t delay_s);
+    void ultrasonic_sensor_set_u2o_delay(uint16_t delay_s);
 
     /**
      * @brief Get the current ultrasonic unoccupied-to-occupied delay
      *
      * @return Current delay in seconds
      */
-    uint16_t occupency_sensor_get_u2o_delay(void);
+    uint16_t ultrasonic_sensor_get_u2o_delay(void);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -47,7 +47,7 @@
 #include "driver/gpio.h"
 #include "binary_sensor.h"
 #include "relay_driver.h"
-#include "occupency_sensor.h"
+#include "ultrasonic_sensor.h"
 #include "led_strip.h"
 
 #if !defined ZB_ED_ROLE
@@ -69,8 +69,8 @@ static sensor_func_pair_t sensor_func_pair[] = {
     {HA_BINARY_SENSOR_ENDPOINT_1, GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
     {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO}};
 
-static occupency_func_pair_t occupency_func_pair[] = {
-    {HA_OCCUPENCY_SENSOR_ENDPOINT_1, GPIO_NUM_2, GPIO_NUM_3, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
+static ultrasonic_sensor_func_pair_t ultrasonic_sensor_func_pair[] = {
+    {HA_ULTRASONIC_SENSOR_ENDPOINT_1, GPIO_NUM_2, GPIO_NUM_3, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
 
 /**
  * Initialize the onboard LED for Identify indication
@@ -211,22 +211,22 @@ static void zb_binary_sensor_handler(sensor_func_pair_t *sensor_func_pair)
     }
 }
 
-static void zb_occupency_sensor_handler(occupency_func_pair_t *occupency_func_pair)
+static void zb_ultrasonic_sensor_handler(ultrasonic_sensor_func_pair_t *ultrasonic_sensor_func_pair)
 {
     // Check if we're connected to the network before trying to report
     if (esp_zb_bdb_dev_joined())
     {
-        bool occupency_state = (occupency_func_pair->func == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED);
+        bool ultrasonic_state = (ultrasonic_sensor_func_pair->func == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED);
 
-        ESP_LOGI(TAG, "Occupancy changed detected - endpoint %d, state is: %s",
-                 occupency_func_pair->endpoint,
-                 occupency_state ? "Occupied" : "Unoccupied");
+        ESP_LOGI(TAG, "Ultrasonic sensor changed detected - endpoint %d, state is: %s",
+                 ultrasonic_sensor_func_pair->endpoint,
+                 ultrasonic_state ? "Occupied" : "Unoccupied");
 
         esp_zb_lock_acquire(portMAX_DELAY);
 
-        uint8_t occupancy_value = occupency_state ? ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED : ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
+        uint8_t occupancy_value = ultrasonic_state ? ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED : ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
 
-        esp_zb_zcl_set_attribute_val(occupency_func_pair->endpoint,
+        esp_zb_zcl_set_attribute_val(ultrasonic_sensor_func_pair->endpoint,
                                      ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
                                      ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
                                      ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
@@ -242,7 +242,7 @@ static void zb_occupency_sensor_handler(occupency_func_pair_t *occupency_func_pa
 
         esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
             .zcl_basic_cmd = {
-                .src_endpoint = occupency_func_pair->endpoint,
+                .src_endpoint = ultrasonic_sensor_func_pair->endpoint,
             },
             .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
             .clusterID = ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
@@ -256,16 +256,16 @@ static void zb_occupency_sensor_handler(occupency_func_pair_t *occupency_func_pa
 
         if (err != ESP_OK)
         {
-            ESP_LOGE(TAG, "Failed to report occupancy attribute: %s", esp_err_to_name(err));
+            ESP_LOGE(TAG, "Failed to report ultrasonic sensor attribute: %s", esp_err_to_name(err));
         }
         else
         {
-            ESP_LOGI(TAG, "Occupancy state reported to coordinator");
+            ESP_LOGI(TAG, "Ultrasonic sensor state reported to coordinator");
         }
     }
     else
     {
-        ESP_LOGW(TAG, "Occupancy changed but device not joined to network yet, skipping report");
+        ESP_LOGW(TAG, "Ultrasonic sensor changed but device not joined to network yet, skipping report");
     }
 }
 
@@ -278,8 +278,8 @@ static esp_err_t deferred_driver_init(void)
     ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), zb_binary_sensor_handler), ESP_FAIL, TAG,
                         "Failed to initialize binary sensor");
 
-    ESP_RETURN_ON_FALSE(occupency_sensor_init(occupency_func_pair, OCCUPENCY_PAIR_SIZE(occupency_func_pair), zb_occupency_sensor_handler), ESP_FAIL, TAG,
-                        "Failed to initialize binary sensor");
+    ESP_RETURN_ON_FALSE(ultrasonic_sensor_init(ultrasonic_sensor_func_pair, ULTRASONIC_SENSOR_PAIR_SIZE(ultrasonic_sensor_func_pair), zb_ultrasonic_sensor_handler), ESP_FAIL, TAG,
+                        "Failed to initialize ultrasonic sensor");
     return ESP_OK;
 }
 
@@ -420,7 +420,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                 {
                     ESP_LOGI(TAG, "Reporting initial sensor states after reboot");
                     binary_sensor_report_initial_states(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair));
-                    occupency_sensor_report_initial_states(occupency_func_pair, OCCUPENCY_PAIR_SIZE(occupency_func_pair));
+                    ultrasonic_sensor_report_initial_states(ultrasonic_sensor_func_pair, ULTRASONIC_SENSOR_PAIR_SIZE(ultrasonic_sensor_func_pair));
                 }
             }
         }
@@ -454,7 +454,7 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
             }
         }
     }
-    else if (message->info.dst_endpoint == HA_OCCUPENCY_SENSOR_ENDPOINT_1)
+    else if (message->info.dst_endpoint == HA_ULTRASONIC_SENSOR_ENDPOINT_1)
     {
         if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING)
         {
@@ -463,21 +463,21 @@ static esp_err_t zb_attribute_handler(const esp_zb_zcl_set_attr_value_message_t 
             {
                 uint8_t threshold = message->attribute.data.value ? *(uint8_t *)message->attribute.data.value : 0;
                 ESP_LOGI(TAG, "Ultrasonic detection threshold set to %d cm via Zigbee", threshold);
-                occupency_sensor_set_threshold(threshold);
+                ultrasonic_sensor_set_threshold(threshold);
             }
             else if (message->attribute.id == ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY_ID &&
                      message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16)
             {
                 uint16_t delay = message->attribute.data.value ? *(uint16_t *)message->attribute.data.value : 0;
                 ESP_LOGI(TAG, "Ultrasonic O2U delay set to %d s via Zigbee", delay);
-                occupency_sensor_set_o2u_delay(delay);
+                ultrasonic_sensor_set_o2u_delay(delay);
             }
             else if (message->attribute.id == ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY_ID &&
                      message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16)
             {
                 uint16_t delay = message->attribute.data.value ? *(uint16_t *)message->attribute.data.value : 0;
                 ESP_LOGI(TAG, "Ultrasonic U2O delay set to %d s via Zigbee", delay);
-                occupency_sensor_set_u2o_delay(delay);
+                ultrasonic_sensor_set_u2o_delay(delay);
             }
         }
     }
@@ -548,14 +548,14 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_binary_sensor_cfg_t sensor_cfg2 = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT_2, garage_door_name2);
     garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg2);
 
-    esp_zb_occupency_sensor_cfg_t occupency_cfg = ESP_ZB_DEFAULT_OCCCUPENCY_SENSOR_CONFIG(HA_OCCUPENCY_SENSOR_ENDPOINT_1);
-    garage_occupency_sensor_ep_create(esp_zb_ep_list, &occupency_cfg);
+    esp_zb_ultrasonic_sensor_cfg_t ultrasonic_cfg = ESP_ZB_DEFAULT_ULTRASONIC_SENSOR_CONFIG(HA_ULTRASONIC_SENSOR_ENDPOINT_1);
+    garage_ultrasonic_sensor_ep_create(esp_zb_ep_list, &ultrasonic_cfg);
 
     // Add manufacturer info to both endpoints
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ESP_RELAY_ENDPOINT, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_1, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_2, &info);
-    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_OCCUPENCY_SENSOR_ENDPOINT_1, &info);
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ULTRASONIC_SENSOR_ENDPOINT_1, &info);
 
     // Register the single device with both endpoints
     esp_zb_device_register(esp_zb_ep_list);
@@ -567,7 +567,7 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_identify_notify_handler_register(HA_ESP_RELAY_ENDPOINT, zb_identify_notify_handler);
     esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_1, zb_identify_notify_handler);
     esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_2, zb_identify_notify_handler);
-    esp_zb_identify_notify_handler_register(HA_OCCUPENCY_SENSOR_ENDPOINT_1, zb_identify_notify_handler);
+    esp_zb_identify_notify_handler_register(HA_ULTRASONIC_SENSOR_ENDPOINT_1, zb_identify_notify_handler);
 
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
     ESP_ERROR_CHECK(esp_zb_start(false));

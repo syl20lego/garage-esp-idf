@@ -39,7 +39,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "occupency_sensor.h"
+#include "ultrasonic_sensor.h"
 #include "esp_timer.h"
 #include "esp_rom_sys.h"
 #include "nvs_flash.h"
@@ -59,10 +59,10 @@
 #define ULTRASONIC_O2U_DELAY_DEFAULT 0 // Default occupied-to-unoccupied delay in seconds
 #define ULTRASONIC_U2O_DELAY_DEFAULT 0 // Default unoccupied-to-occupied delay in seconds
 
-/* occupancy function pair, should be defined in switch example source file */
-static occupency_func_pair_t *occupency_func_pair;
+/* ultrasonic sensor function pair, should be defined in switch example source file */
+static ultrasonic_sensor_func_pair_t *ultrasonic_sensor_func_pair;
 /* call back function pointer */
-static esp_occupency_callback_t func_ptr;
+static esp_ultrasonic_sensor_callback_t func_ptr;
 /* which button is pressed */
 static uint8_t switch_num;
 /* Ultrasonic detection threshold in cm (configurable via Zigbee) */
@@ -71,7 +71,7 @@ static uint8_t ultrasonic_detection_threshold_cm = ULTRASONIC_DETECTION_DISTANCE
 static uint16_t ultrasonic_o2u_delay_s = ULTRASONIC_O2U_DELAY_DEFAULT;
 /* Ultrasonic unoccupied-to-occupied delay in seconds (configurable via Zigbee) */
 static uint16_t ultrasonic_u2o_delay_s = ULTRASONIC_U2O_DELAY_DEFAULT;
-static const char *TAG = "ESP_ZB_OCCUPENCY";
+static const char *TAG = "ESP_ZB_ULTRASONIC";
 
 /**
     4.8 Occupancy Sensing
@@ -80,10 +80,10 @@ static const char *TAG = "ESP_ZB_OCCUPENCY";
     The server cluster provides an interface to occupancy sensing functionality, including configuration and
     provision of notifications of occupancy status.
 
-    @param[in] sensor_cfg Configuration for occupency sensor
-    @return Endpoint list with occupency sensor configuration
+    @param[in] sensor_cfg Configuration for ultrasonic sensor
+    @return Endpoint list with ultrasonic sensor configuration
 */
-esp_zb_cluster_list_t *garage_occupency_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_occupency_sensor_cfg_t *sensor_cfg)
+esp_zb_cluster_list_t *garage_ultrasonic_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ultrasonic_sensor_cfg_t *sensor_cfg)
 {
     // Load settings from NVS BEFORE creating the Zigbee attributes
     nvs_handle_t nvs_handle;
@@ -413,7 +413,7 @@ static int32_t ultrasonic_measure_distance(gpio_num_t trigger_pin, gpio_num_t ec
 /**
  * @brief Task for periodically checking ultrasonic sensor
  */
-static void occupency_sensor_task(void *arg)
+static void ultrasonic_sensor_task(void *arg)
 {
     static esp_zb_zcl_occupancy_sensing_occupancy_t previous_state[10] = {ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}; // Support up to 10 sensors
     static esp_zb_zcl_occupancy_sensing_occupancy_t raw_state[10] = {ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED};      // Raw detected state before delay
@@ -423,7 +423,7 @@ static void occupency_sensor_task(void *arg)
 
     // Wait for Zigbee stack to initialize
     vTaskDelay(pdMS_TO_TICKS(5000));
-    ESP_LOGI(TAG, "Starting occupancy sensor polling task");
+    ESP_LOGI(TAG, "Starting ultrasonic sensor polling task");
     task_ready = true;
 
     while (1)
@@ -432,7 +432,7 @@ static void occupency_sensor_task(void *arg)
 
         for (int i = 0; i < switch_num; i++)
         {
-            occupency_func_pair_t *sensor = &occupency_func_pair[i];
+            ultrasonic_sensor_func_pair_t *sensor = &ultrasonic_sensor_func_pair[i];
 
             // Measure distance
             int32_t distance = ultrasonic_measure_distance(sensor->trigger, sensor->echo);
@@ -537,9 +537,9 @@ static void occupency_sensor_task(void *arg)
  * @param sensor_func_pair_param  pointer to sensor pair array
  * @param sensor_num              number of sensors
  */
-static bool occupency_sensor_gpio_init(occupency_func_pair_t *sensor_func_pair_param, uint8_t sensor_num)
+static bool ultrasonic_sensor_gpio_init(ultrasonic_sensor_func_pair_t *sensor_func_pair_param, uint8_t sensor_num)
 {
-    occupency_func_pair = sensor_func_pair_param;
+    ultrasonic_sensor_func_pair = sensor_func_pair_param;
     switch_num = sensor_num;
 
     for (int i = 0; i < sensor_num; i++)
@@ -570,14 +570,14 @@ static bool occupency_sensor_gpio_init(occupency_func_pair_t *sensor_func_pair_p
     }
 
     // Start polling task
-    xTaskCreate(occupency_sensor_task, "occupency_task", 4096, NULL, 10, NULL);
+    xTaskCreate(ultrasonic_sensor_task, "ultrasonic_task", 4096, NULL, 10, NULL);
 
     return true;
 }
 
-bool occupency_sensor_init(occupency_func_pair_t *sensor_func_pair, uint8_t sensor_num, esp_occupency_callback_t cb)
+bool ultrasonic_sensor_init(ultrasonic_sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num, esp_ultrasonic_sensor_callback_t cb)
 {
-    if (!occupency_sensor_gpio_init(sensor_func_pair, sensor_num))
+    if (!ultrasonic_sensor_gpio_init(sensor_func_pair, sensor_num))
     {
         return false;
     }
@@ -632,11 +632,11 @@ bool occupency_sensor_init(occupency_func_pair_t *sensor_func_pair, uint8_t sens
                  ultrasonic_detection_threshold_cm, ultrasonic_o2u_delay_s, ultrasonic_u2o_delay_s);
     }
 
-    ESP_LOGI(TAG, "Occupancy sensor driver initialized with %d HC-SR04 sensors", sensor_num);
+    ESP_LOGI(TAG, "Ultrasonic sensor driver initialized with %d HC-SR04 sensors", sensor_num);
     return true;
 }
 
-void occupency_sensor_report_initial_states(occupency_func_pair_t *sensor_func_pair_param, uint8_t sensor_num)
+void ultrasonic_sensor_report_initial_states(ultrasonic_sensor_func_pair_t *sensor_func_pair_param, uint8_t sensor_num)
 {
     ESP_LOGI(TAG, "Reporting initial sensor states for %d sensors", sensor_num);
 
@@ -683,10 +683,10 @@ void occupency_sensor_report_initial_states(occupency_func_pair_t *sensor_func_p
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
-    ESP_LOGI(TAG, "Initial occupancy sensor states reported");
+    ESP_LOGI(TAG, "Initial ultrasonic sensor states reported");
 }
 
-void occupency_sensor_set_threshold(uint8_t threshold_cm)
+void ultrasonic_sensor_set_threshold(uint8_t threshold_cm)
 {
     // Validate range (1-254 as per ZCL spec)
     if (threshold_cm < 1)
@@ -724,12 +724,12 @@ void occupency_sensor_set_threshold(uint8_t threshold_cm)
     }
 }
 
-uint8_t occupency_sensor_get_threshold(void)
+uint8_t ultrasonic_sensor_get_threshold(void)
 {
     return ultrasonic_detection_threshold_cm;
 }
 
-void occupency_sensor_set_o2u_delay(uint16_t delay_s)
+void ultrasonic_sensor_set_o2u_delay(uint16_t delay_s)
 {
     ultrasonic_o2u_delay_s = delay_s;
     ESP_LOGI(TAG, "Ultrasonic O2U delay set to %d s", ultrasonic_o2u_delay_s);
@@ -757,12 +757,12 @@ void occupency_sensor_set_o2u_delay(uint16_t delay_s)
     }
 }
 
-uint16_t occupency_sensor_get_o2u_delay(void)
+uint16_t ultrasonic_sensor_get_o2u_delay(void)
 {
     return ultrasonic_o2u_delay_s;
 }
 
-void occupency_sensor_set_u2o_delay(uint16_t delay_s)
+void ultrasonic_sensor_set_u2o_delay(uint16_t delay_s)
 {
     ultrasonic_u2o_delay_s = delay_s;
     ESP_LOGI(TAG, "Ultrasonic U2O delay set to %d s", ultrasonic_u2o_delay_s);
@@ -790,7 +790,7 @@ void occupency_sensor_set_u2o_delay(uint16_t delay_s)
     }
 }
 
-uint16_t occupency_sensor_get_u2o_delay(void)
+uint16_t ultrasonic_sensor_get_u2o_delay(void)
 {
     return ultrasonic_u2o_delay_s;
 }
