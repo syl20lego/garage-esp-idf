@@ -49,8 +49,6 @@ extern "C"
 #define GPIO_INPUT_PU_NO 0
 #define GPIO_INPUT__PU_NC 1
 
-#define SENSOR_PAIR_SIZE(TYPE_STR_PAIR) (sizeof(TYPE_STR_PAIR) / sizeof(TYPE_STR_PAIR[0]))
-
     typedef enum
     {
         SENSOR_IDLE,

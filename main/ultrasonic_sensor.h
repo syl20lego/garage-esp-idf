@@ -47,8 +47,6 @@ extern "C"
 
 #define ESP_ZB_HA_OCCUPANCY_SENSOR_DEVICE_ID 0x0107
 
-#define ULTRASONIC_SENSOR_PAIR_SIZE(TYPE_STR_PAIR) (sizeof(TYPE_STR_PAIR) / sizeof(TYPE_STR_PAIR[0]))
-
     typedef struct
     {
         uint8_t endpoint;

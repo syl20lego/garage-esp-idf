@@ -57,8 +57,6 @@ extern "C"
         .endpoint = ep,                                    \
     }
 
-#define RELAY_PAIR_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
-
     typedef struct relay_func_pair_s
     {
         uint8_t endpoint;

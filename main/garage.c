@@ -277,12 +277,12 @@ static esp_err_t deferred_driver_init(void)
     // Initialize LED for Identify functionality
     identify_led_init();
 
-    relay_driver_init(relay_func_pair, RELAY_PAIR_SIZE(relay_func_pair));
+    relay_driver_init(relay_func_pair, SENSOR_PAIR_SIZE(relay_func_pair));
 
     ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), zb_binary_sensor_handler), ESP_FAIL, TAG,
                         "Failed to initialize binary sensor");
 
-    ESP_RETURN_ON_FALSE(ultrasonic_sensor_init(ultrasonic_sensor_func_pair, ULTRASONIC_SENSOR_PAIR_SIZE(ultrasonic_sensor_func_pair), zb_ultrasonic_sensor_handler), ESP_FAIL, TAG,
+    ESP_RETURN_ON_FALSE(ultrasonic_sensor_init(ultrasonic_sensor_func_pair, SENSOR_PAIR_SIZE(ultrasonic_sensor_func_pair), zb_ultrasonic_sensor_handler), ESP_FAIL, TAG,
                         "Failed to initialize ultrasonic sensor");
     return ESP_OK;
 }
@@ -424,7 +424,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                 {
                     ESP_LOGI(TAG, "Reporting initial sensor states after reboot");
                     binary_sensor_report_initial_states(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair));
-                    ultrasonic_sensor_report_initial_states(ultrasonic_sensor_func_pair, ULTRASONIC_SENSOR_PAIR_SIZE(ultrasonic_sensor_func_pair));
+                    ultrasonic_sensor_report_initial_states(ultrasonic_sensor_func_pair, SENSOR_PAIR_SIZE(ultrasonic_sensor_func_pair));
                 }
             }
         }
