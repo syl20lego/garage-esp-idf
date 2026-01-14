@@ -36,7 +36,6 @@ extern "C"
     {
         char *manufacturer_name;
         char *model_identifier;
-        uint8_t power_source;
     } zcl_basic_manufacturer_info_t;
 
     /**

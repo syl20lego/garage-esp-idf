@@ -548,7 +548,7 @@ static void esp_zb_task(void *pvParameters)
     zcl_basic_manufacturer_info_t info = {
         .manufacturer_name = ESP_MANUFACTURER_NAME,
         .model_identifier = ESP_MODEL_IDENTIFIER,
-        .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_MAINS_SINGLE_PHASE};
+    };
 
     /*
     Create a single endpoint list for the device to register all endpoints
