@@ -33,9 +33,9 @@ This was created from the ESP Zigbee SDK provides more examples and tools for pr
 
 ## Home Assistant
 
-![Device](./documentation/ha-device.png))
+![Device](./documentation/ha-device.png)
 
-![Manage Zigbee device](./documentation/ha-device.png))
+![Manage Zigbee device](./documentation/ha-device.png)
 
 ## Configure the project
 
