@@ -31,6 +31,12 @@ This was created from the ESP Zigbee SDK provides more examples and tools for pr
 * A USB cable for power supply and programming
 
 
+## Home Assistant
+
+![Device](./documentation/ha-device.png))
+
+![Manage Zigbee device](./documentation/ha-device.png))
+
 ## Configure the project
 
 Before project configuration and build, make sure to set the correct chip target using `idf.py --preview set-target TARGET` command.
