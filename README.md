@@ -61,7 +61,51 @@ I (11618) ESP_ZB_ON_OFF_LIGHT: Light sets to Off
 
 ## Garage Functions
 
+### Main Functions
 
+| Function | Description |
+|----------|-------------|
+| `app_main()` | Entry point that initializes NVS flash, configures Zigbee platform, and creates the main Zigbee task. |
+| `esp_zb_task()` | Main Zigbee task that initializes the stack, creates all endpoints (binary sensors, ultrasonic sensor, relay), registers handlers, and starts the Zigbee main loop. |
+| `esp_zb_app_signal_handler()` | Handles Zigbee application signals including network startup, steering, formation, device announcements, and permit join status. |
+
+### Attribute & Action Handlers
+
+| Function | Description |
+|----------|-------------|
+| `garage_action_handler()` | Main callback dispatcher that routes Zigbee actions (set attribute, report attribute, identify effects) to appropriate handlers. |
+| `garage_set_attribute_handler()` | Processes incoming Zigbee attribute set messages for relay control and ultrasonic sensor configuration (threshold, delays). |
+
+### Sensor Handlers
+
+| Function | Description |
+|----------|-------------|
+| `zb_binary_sensor_handler()` | Handles binary sensor state changes (door open/closed), updates ZCL attributes, and reports changes to the coordinator. |
+| `zb_ultrasonic_sensor_handler()` | Handles ultrasonic sensor occupancy changes, updates occupancy sensing attributes, and reports to the coordinator. |
+
+### Identify & LED Functions
+
+| Function | Description |
+|----------|-------------|
+| `identify_led_init()` | Initializes the WS2812 RGB LED on GPIO 8 for device identification. |
+| `identify_led_blink_task()` | FreeRTOS task that blinks the LED during the identify period. |
+| `zb_identify_notify_handler()` | Callback triggered when an identify command is received; starts/stops the LED blink task. |
+
+### Driver Initialization
+
+| Function | Description |
+|----------|-------------|
+| `deferred_driver_init()` | Initializes all hardware drivers (LED, relay, binary sensors, ultrasonic sensor) after Zigbee stack startup. |
+| `bdb_start_top_level_commissioning_cb()` | Callback to restart commissioning process when network formation/steering fails. |
+
+### Endpoints
+
+| Endpoint | Type | Description |
+|----------|------|-------------|
+| 2 | Binary Sensor | Garage Door 1 - contact sensor on GPIO 21 |
+| 3 | Binary Sensor | Garage Door 2 - contact sensor on GPIO 22 |
+| 4 | Ultrasonic Sensor | Occupancy sensor using GPIO 2 (trigger) and GPIO 3 (echo) |
+| 10 | Relay | On/Off light device for relay control on GPIO 23 |
 
 ## Troubleshooting
 
