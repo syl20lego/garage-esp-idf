@@ -1,6 +1,21 @@
 | Supported Targets | ESP32-C6 | 
 | ----------------- | -------- |
 
+Starting this project, I had lot of difficulties finding examples for more complex solution where you have multiple sensors
+and are looking for a more complete solution where you can set values and support Identity feture.
+
+This is my initial implementation, I'm no expert in either Zibee standard nor the Expressif ESP IDF but I hope this can help
+others. Feel free to send me feeback, issues, PR to improve this project.
+- How to have multiple endpoints and clusters with a single board. 
+- How to implement the HA identity feature to blink the LED.
+- How to create a binary sensor
+- How to create a relay (switch)
+- How to create a occupency (ultrsonic) sensor
+- How to save attributes
+
+I really would like to have a ZHA quirk for this project, but so far I wasn't successful to create any customs quirks. 
+Help on this or any guideline would appreciated.
+
 # Garage Door Example
 
 This test code shows how to configure Zigbee end device and use it as HA with mutliple endpoints.
