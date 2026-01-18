@@ -91,14 +91,6 @@ extern "C"
     } esp_zb_binary_sensor_cfg_t;
 
     /**
-     * @brief Create binary sensor endpoint
-     *
-     * @param[in] sensor_cfg Configuration for binary sensor
-     * @return Endpoint list with binary sensor configuration
-     */
-    esp_zb_cluster_list_t *garage_binary_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_binary_sensor_cfg_t *sensor_cfg);
-
-    /**
      * @brief init function for binary sensor and callback setup
      *
      * @param sensor_func_pair      pointer of the button pair.
@@ -108,12 +100,12 @@ extern "C"
     bool binary_sensor_init(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num, esp_sensor_callback_t cb);
 
     /**
-     * @brief Report initial sensor states (call after Zigbee network is ready)
+     * @brief Create binary sensor endpoint
      *
-     * @param[in] sensor_func_pair Array of sensor configurations
-     * @param[in] sensor_num Number of sensors
+     * @param[in] sensor_cfg Configuration for binary sensor
+     * @return Endpoint list with binary sensor configuration
      */
-    void binary_sensor_report_initial_states(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num);
+    esp_zb_cluster_list_t *garage_binary_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_binary_sensor_cfg_t *sensor_cfg);
 
     /**
      * @brief Zigbee handler for binary sensor state changes
@@ -124,6 +116,14 @@ extern "C"
      * @param[in] sensor_func_pair Pointer to the sensor that changed state
      */
     void binary_sensor_zb_handler(sensor_func_pair_t *sensor_func_pair);
+
+    /**
+     * @brief Report initial sensor states (call after Zigbee network is ready)
+     *
+     * @param[in] sensor_func_pair Array of sensor configurations
+     * @param[in] sensor_num Number of sensors
+     */
+    void binary_sensor_report_initial_states(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num);
 
 #ifdef __cplusplus
 } // extern "C"

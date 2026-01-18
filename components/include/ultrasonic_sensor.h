@@ -76,22 +76,6 @@ extern "C"
     } esp_zb_ultrasonic_sensor_cfg_t;
 
     /**
-     * @brief Create ultrasonic sensor endpoint
-     *
-     * @param[in] sensor_cfg Configuration for ultrasonic sensor
-     * @return Endpoint list with ultrasonic sensor configuration
-     */
-    esp_zb_cluster_list_t *garage_ultrasonic_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ultrasonic_sensor_cfg_t *sensor_cfg);
-
-    /**
-     * @brief Report initial ultrasonic sensor states (call after Zigbee network is ready)
-     *
-     * @param[in] sensor_func_pair Array of sensor configurations
-     * @param[in] sensor_num Number of sensors
-     */
-    void ultrasonic_sensor_report_initial_states(ultrasonic_sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num);
-
-    /**
      * @brief init function for ultrasonic sensor and callback setup
      *
      * @param sensor_func_pair      pointer of the ultrasonic sensor pair.
@@ -101,46 +85,12 @@ extern "C"
     bool ultrasonic_sensor_init(ultrasonic_sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num, esp_ultrasonic_sensor_callback_t cb);
 
     /**
-     * @brief Set the ultrasonic detection threshold
+     * @brief Create ultrasonic sensor endpoint
      *
-     * @param threshold_cm Detection threshold in centimeters (1-254)
+     * @param[in] sensor_cfg Configuration for ultrasonic sensor
+     * @return Endpoint list with ultrasonic sensor configuration
      */
-    void ultrasonic_sensor_set_threshold(uint8_t threshold_cm);
-
-    /**
-     * @brief Get the current ultrasonic detection threshold
-     *
-     * @return Current threshold in centimeters
-     */
-    uint8_t ultrasonic_sensor_get_threshold(void);
-
-    /**
-     * @brief Set the ultrasonic occupied-to-unoccupied delay
-     *
-     * @param delay_s Delay in seconds (0-65534)
-     */
-    void ultrasonic_sensor_set_o2u_delay(uint16_t delay_s);
-
-    /**
-     * @brief Get the current ultrasonic occupied-to-unoccupied delay
-     *
-     * @return Current delay in seconds
-     */
-    uint16_t ultrasonic_sensor_get_o2u_delay(void);
-
-    /**
-     * @brief Set the ultrasonic unoccupied-to-occupied delay
-     *
-     * @param delay_s Delay in seconds (0-65534)
-     */
-    void ultrasonic_sensor_set_u2o_delay(uint16_t delay_s);
-
-    /**
-     * @brief Get the current ultrasonic unoccupied-to-occupied delay
-     *
-     * @return Current delay in seconds
-     */
-    uint16_t ultrasonic_sensor_get_u2o_delay(void);
+    esp_zb_cluster_list_t *garage_ultrasonic_sensor_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ultrasonic_sensor_cfg_t *sensor_cfg);
 
     /**
      * @brief Zigbee handler for ultrasonic sensor state changes
@@ -151,6 +101,35 @@ extern "C"
      * @param[in] ultrasonic_sensor_func_pair Pointer to the sensor that changed state
      */
     void ultrasonic_sensor_zb_handler(ultrasonic_sensor_func_pair_t *ultrasonic_sensor_func_pair);
+
+    /**
+     * @brief Report initial ultrasonic sensor states (call after Zigbee network is ready)
+     *
+     * @param[in] sensor_func_pair Array of sensor configurations
+     * @param[in] sensor_num Number of sensors
+     */
+    void ultrasonic_sensor_report_initial_states(ultrasonic_sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num);
+
+    /**
+     * @brief Set the ultrasonic detection threshold
+     *
+     * @param threshold_cm Detection threshold in centimeters (1-254)
+     */
+    void ultrasonic_sensor_set_threshold(uint8_t threshold_cm);
+
+    /**
+     * @brief Set the ultrasonic occupied-to-unoccupied delay
+     *
+     * @param delay_s Delay in seconds (0-65534)
+     */
+    void ultrasonic_sensor_set_o2u_delay(uint16_t delay_s);
+
+    /**
+     * @brief Set the ultrasonic unoccupied-to-occupied delay
+     *
+     * @param delay_s Delay in seconds (0-65534)
+     */
+    void ultrasonic_sensor_set_u2o_delay(uint16_t delay_s);
 
 #ifdef __cplusplus
 } // extern "C"

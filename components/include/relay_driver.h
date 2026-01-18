@@ -79,21 +79,13 @@ extern "C"
     void relay_driver_init(relay_func_pair_t *relay_pairs, uint8_t relay_pair_count);
 
     /**
-     * @brief Set relay power (on/off) with automatic pulse handling.
-     *        When turned on, relay will pulse for 3 seconds then turn off.
+     * @brief Create on/off light endpoint with configuration
      *
-     * @param  power    The relay power to be set (true = pulse, false = force off)
-     * @param  endpoint The endpoint ID for reporting status back to coordinator
+     * @param[in] ep_list Endpoint list to add the light endpoint to
+     * @param[in] ep_light_cfg Extended configuration including endpoint ID
+     * @return Cluster list for the light endpoint
      */
-    void relay_driver_set_power(bool power, uint8_t endpoint);
-
-    /**
-     * @brief Callback when binding to a relay device
-     *
-     * @param[in] zdo_status Status of the bind operation
-     * @param[in] user_ctx User context containing relay device parameters
-     */
-    void relay_bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx);
+    esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg);
 
     /**
      * @brief Callback when a relay device is found
@@ -106,13 +98,13 @@ extern "C"
     void relay_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t endpoint, void *user_ctx);
 
     /**
-     * @brief Create on/off light endpoint with configuration
+     * @brief Set relay power (on/off) with automatic pulse handling.
+     *        When turned on, relay will pulse for 3 seconds then turn off.
      *
-     * @param[in] ep_list Endpoint list to add the light endpoint to
-     * @param[in] ep_light_cfg Extended configuration including endpoint ID
-     * @return Cluster list for the light endpoint
+     * @param  power    The relay power to be set (true = pulse, false = force off)
+     * @param  endpoint The endpoint ID for reporting status back to coordinator
      */
-    esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg);
+    void relay_driver_set_power(bool power, uint8_t endpoint);
 
 #ifdef __cplusplus
 } // extern "C"
