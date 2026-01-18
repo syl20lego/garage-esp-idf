@@ -54,10 +54,8 @@
 #error Define ZB_ED_ROLE in idf.py menuconfig to compile garage (End Device) source code.
 #endif
 
-#define DOOR_SENSOR "\x0a" \
-                    "Door Sensor"
-
 static const char *TAG = "ESP_ZB_GARAGE";
+
 /********************* Define functions **************************/
 
 static sensor_func_pair_t sensor_func_pair[] = {
