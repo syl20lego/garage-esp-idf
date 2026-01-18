@@ -48,7 +48,7 @@
 #include "binary_sensor.h"
 #include "relay_driver.h"
 #include "ultrasonic_sensor.h"
-#include "led_strip.h"
+#include "identify_led.h"
 
 #if !defined ZB_ED_ROLE
 #error Define ZB_ED_ROLE in idf.py menuconfig to compile garage (End Device) source code.
@@ -60,11 +60,6 @@
 static const char *TAG = "ESP_ZB_GARAGE";
 /********************* Define functions **************************/
 
-/* LED state tracking for Identify */
-static TaskHandle_t identify_led_task_handle = NULL;
-static bool identify_active = false;
-static led_strip_handle_t led_strip = NULL;
-
 static sensor_func_pair_t sensor_func_pair[] = {
     {HA_BINARY_SENSOR_ENDPOINT_1, GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
     {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO}};
@@ -74,102 +69,6 @@ static ultrasonic_sensor_func_pair_t ultrasonic_sensor_func_pair[] = {
 
 static relay_func_pair_t relay_func_pair[] = {
     {HA_RELAY_ENDPOINT, GPIO_NUM_23, NULL}};
-
-/**
- * Initialize the onboard LED for Identify indication
- */
-static void identify_led_init(void)
-{
-    // Configure WS2812 RGB LED strip
-    led_strip_config_t strip_config = {
-        .strip_gpio_num = BOARD_LED_GPIO,
-        .max_leds = 1, // Single RGB LED
-    };
-
-    led_strip_rmt_config_t rmt_config = {
-        .resolution_hz = 10 * 1000 * 1000, // 10MHz
-    };
-
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
-
-    // Turn off LED initially
-    led_strip_clear(led_strip);
-    ESP_LOGI(TAG, "Identify LED (WS2812) initialized on GPIO %d", BOARD_LED_GPIO);
-}
-
-/**
- * Task to blink LED during identify period
- */
-static void identify_led_blink_task(void *pvParameters)
-{
-    uint16_t identify_time = *(uint16_t *)pvParameters;
-    ESP_LOGI(TAG, "Starting identify LED blink for %d seconds", identify_time);
-
-    identify_active = true;
-    uint32_t end_time = xTaskGetTickCount() + pdMS_TO_TICKS(identify_time * 1000);
-
-    while (xTaskGetTickCount() < end_time && identify_active)
-    {
-        // LED ON - White color
-        led_strip_set_pixel(led_strip, 0, 25, 25, 25); // White at low brightness
-        led_strip_refresh(led_strip);
-        vTaskDelay(pdMS_TO_TICKS(IDENTIFY_BLINK_PERIOD_MS));
-
-        // LED OFF
-        led_strip_clear(led_strip);
-        vTaskDelay(pdMS_TO_TICKS(IDENTIFY_BLINK_PERIOD_MS));
-    }
-
-    // Ensure LED is off when done
-    led_strip_clear(led_strip);
-    identify_active = false;
-    identify_led_task_handle = NULL;
-    ESP_LOGI(TAG, "Identify LED blink completed");
-    vTaskDelete(NULL);
-}
-
-/**
- * Zigbee Identify callback - called when identify command is received
- */
-static void zb_identify_notify_handler(uint8_t identify_on)
-{
-    ESP_LOGI(TAG, "Identify command received, identify_on: %d", identify_on);
-
-    if (identify_on)
-    {
-        // Start LED blinking - default to 5 seconds if no time is specified
-        static uint16_t time_param = 5;
-
-        // Stop any existing identify task
-        if (identify_led_task_handle != NULL)
-        {
-            identify_active = false;
-            vTaskDelay(pdMS_TO_TICKS(50)); // Give time for task to exit
-            if (identify_led_task_handle != NULL)
-            {
-                vTaskDelete(identify_led_task_handle);
-                identify_led_task_handle = NULL;
-            }
-        }
-
-        xTaskCreate(identify_led_blink_task, "identify_led", 2048, &time_param, 5, &identify_led_task_handle);
-    }
-    else
-    {
-        // Stop identifying - turn off LED
-        if (identify_led_task_handle != NULL)
-        {
-            identify_active = false;
-            vTaskDelay(pdMS_TO_TICKS(50));
-            if (identify_led_task_handle != NULL)
-            {
-                vTaskDelete(identify_led_task_handle);
-                identify_led_task_handle = NULL;
-            }
-        }
-        led_strip_clear(led_strip); // LED off
-    }
-}
 
 static void zb_binary_sensor_handler(sensor_func_pair_t *sensor_func_pair)
 {
@@ -597,10 +496,10 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_core_action_handler_register(garage_action_handler);
 
     // Register identify notification handler for LED indication on each endpoint
-    esp_zb_identify_notify_handler_register(HA_RELAY_ENDPOINT, zb_identify_notify_handler);
-    esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_1, zb_identify_notify_handler);
-    esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_2, zb_identify_notify_handler);
-    esp_zb_identify_notify_handler_register(HA_ULTRASONIC_SENSOR_ENDPOINT_1, zb_identify_notify_handler);
+    esp_zb_identify_notify_handler_register(HA_RELAY_ENDPOINT, identify_led_notify_handler);
+    esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_1, identify_led_notify_handler);
+    esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_2, identify_led_notify_handler);
+    esp_zb_identify_notify_handler_register(HA_ULTRASONIC_SENSOR_ENDPOINT_1, identify_led_notify_handler);
 
     // Set primary channel mask and start the Zigbee stack
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);

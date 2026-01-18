@@ -51,10 +51,6 @@
 #define HA_ULTRASONIC_SENSOR_ENDPOINT_1 4 /* esp ultrasonic sensor device endpoint 1 */
 #define HA_RELAY_ENDPOINT 10              /* esp light bulb device endpoint, used to process light controlling commands */
 
-/* LED configuration for Identify */
-#define BOARD_LED_GPIO GPIO_NUM_8    /* ESP32-C6 DevKit onboard LED */
-#define IDENTIFY_BLINK_PERIOD_MS 500 /* LED blink period during identify */
-
 /* Basic manufacturer information */
 #define ESP_MANUFACTURER_NAME "\x09" \
                               "ESPRESSIF" /* Customized manufacturer name */
