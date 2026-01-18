@@ -151,6 +151,13 @@ See if we can implement RSSI (3.13 RSSI Location):
 
 `idf.py monitor` exit with `ctrl`+`]`
 
+Using USB
+`ls /dev/tty*`
 `idf.py -p /dev/tty.usbmodem1401 flash` 
-
 `idf.py -p /dev/tty.usbmodem1401 erase-flash`
+
+Using UART
+
+`ls /dev/cu.*`
+` idf.py -p /dev/cu.usbmodem1401 flash`
+`idf.py -p /dev/cu.usbmodem1401 erase-flash`
