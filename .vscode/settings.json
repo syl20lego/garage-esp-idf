@@ -15,5 +15,7 @@
     "--background-index",
     "--query-driver=**",
     "--compile-commands-dir=/Users/slegault/project/syl20lego/garage-esp-idf/build"
-  ]
+  ],
+  "idf.monitorPort": "/dev/tty.usbmodem1401",
+  "idf.flashType": "JTAG"
 }

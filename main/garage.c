@@ -70,7 +70,7 @@ static sensor_func_pair_t sensor_func_pair[] = {
     {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO}};
 
 static ultrasonic_sensor_func_pair_t ultrasonic_sensor_func_pair[] = {
-    {HA_ULTRASONIC_SENSOR_ENDPOINT_1, GPIO_NUM_2, GPIO_NUM_3, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
+    {HA_ULTRASONIC_SENSOR_ENDPOINT_1, GPIO_NUM_10, GPIO_NUM_11, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
 
 static relay_func_pair_t relay_func_pair[] = {
     {HA_RELAY_ENDPOINT, GPIO_NUM_23, NULL}};
@@ -560,7 +560,7 @@ static void esp_zb_task(void *pvParameters)
     Endpoint 1 Binary Sensor devices
     */
     static char garage_door_name1[] = "\x0d"
-                                      "Garage Door 1";
+                                      "Garage Door A";
     esp_zb_binary_sensor_cfg_t sensor_cfg1 = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT_1, garage_door_name1);
     garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg1);
 
@@ -568,7 +568,7 @@ static void esp_zb_task(void *pvParameters)
     Endpoint 2 Binary Sensor devices
     */
     static char garage_door_name2[] = "\x0d"
-                                      "Garage Door 2";
+                                      "Garage Door B";
     esp_zb_binary_sensor_cfg_t sensor_cfg2 = ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(HA_BINARY_SENSOR_ENDPOINT_2, garage_door_name2);
     garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg2);
 
