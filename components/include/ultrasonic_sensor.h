@@ -142,6 +142,16 @@ extern "C"
      */
     uint16_t ultrasonic_sensor_get_u2o_delay(void);
 
+    /**
+     * @brief Zigbee handler for ultrasonic sensor state changes
+     *
+     * This function handles reporting ultrasonic sensor state changes to the Zigbee coordinator.
+     * It should be passed as a callback to ultrasonic_sensor_init().
+     *
+     * @param[in] ultrasonic_sensor_func_pair Pointer to the sensor that changed state
+     */
+    void ultrasonic_sensor_zb_handler(ultrasonic_sensor_func_pair_t *ultrasonic_sensor_func_pair);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

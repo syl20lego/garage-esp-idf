@@ -428,3 +428,46 @@ void binary_sensor_report_initial_states(sensor_func_pair_t *button_func_pair, u
 
     ESP_LOGI(TAG, "Initial sensor states reported");
 }
+
+void binary_sensor_zb_handler(sensor_func_pair_t *sensor_func_pair)
+{
+    if (esp_zb_bdb_dev_joined())
+    {
+        // Toggle the binary sensor state
+        bool sensor_state = sensor_func_pair->func == SENSOR_TOGGLE_CONTROLL_ON ? true : false;
+
+        ESP_LOGI(TAG, "Sensor changed detected - state is: %s", sensor_state ? "On" : "Off");
+
+        esp_zb_lock_acquire(portMAX_DELAY);
+
+        // Update the attribute value
+        ESP_ERROR_CHECK(esp_zb_zcl_set_attribute_val(sensor_func_pair->endpoint,
+                                                     ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
+                                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+                                                     ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
+                                                     &sensor_state, false));
+
+        esp_zb_lock_release();
+
+        // Small delay before reporting to ensure attribute is set
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+        // Report the attribute change to the coordinator (Home Assistant)
+        esp_zb_lock_acquire(portMAX_DELAY);
+
+        esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
+            .zcl_basic_cmd = {
+                .src_endpoint = sensor_func_pair->endpoint,
+            },
+            .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
+            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
+            .attributeID = ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
+            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
+        };
+        ESP_ERROR_CHECK(esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd));
+
+        esp_zb_lock_release();
+
+        ESP_EARLY_LOGI(TAG, "Binary sensor state: %s", sensor_state ? "On" : "Off");
+    }
+}

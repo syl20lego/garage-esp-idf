@@ -115,6 +115,16 @@ extern "C"
      */
     void binary_sensor_report_initial_states(sensor_func_pair_t *sensor_func_pair, uint8_t sensor_num);
 
+    /**
+     * @brief Zigbee handler for binary sensor state changes
+     *
+     * This function handles reporting binary sensor state changes to the Zigbee coordinator.
+     * It should be passed as a callback to binary_sensor_init().
+     *
+     * @param[in] sensor_func_pair Pointer to the sensor that changed state
+     */
+    void binary_sensor_zb_handler(sensor_func_pair_t *sensor_func_pair);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

@@ -794,3 +794,61 @@ uint16_t ultrasonic_sensor_get_u2o_delay(void)
 {
     return ultrasonic_u2o_delay_s;
 }
+
+void ultrasonic_sensor_zb_handler(ultrasonic_sensor_func_pair_t *ultrasonic_sensor_func_pair)
+{
+    // Check if we're connected to the network before trying to report
+    if (esp_zb_bdb_dev_joined())
+    {
+        bool ultrasonic_state = (ultrasonic_sensor_func_pair->func == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED);
+
+        ESP_LOGI(TAG, "Ultrasonic sensor changed detected - endpoint %d, state is: %s",
+                 ultrasonic_sensor_func_pair->endpoint,
+                 ultrasonic_state ? "Occupied" : "Unoccupied");
+
+        esp_zb_lock_acquire(portMAX_DELAY);
+
+        uint8_t occupancy_value = ultrasonic_state ? ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED : ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
+
+        esp_zb_zcl_set_attribute_val(ultrasonic_sensor_func_pair->endpoint,
+                                     ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
+                                     ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+                                     &occupancy_value, false);
+
+        esp_zb_lock_release();
+
+        // Small delay before reporting
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // Report the attribute change
+        esp_zb_lock_acquire(portMAX_DELAY);
+
+        esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
+            .zcl_basic_cmd = {
+                .src_endpoint = ultrasonic_sensor_func_pair->endpoint,
+            },
+            .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
+            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+            .attributeID = ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
+        };
+
+        esp_err_t err = esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd);
+
+        esp_zb_lock_release();
+
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to report ultrasonic sensor attribute: %s", esp_err_to_name(err));
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Ultrasonic sensor state reported to coordinator");
+        }
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Ultrasonic sensor changed but device not joined to network yet, skipping report");
+    }
+}

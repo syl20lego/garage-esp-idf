@@ -70,107 +70,6 @@ static ultrasonic_sensor_func_pair_t ultrasonic_sensor_func_pair[] = {
 static relay_func_pair_t relay_func_pair[] = {
     {HA_RELAY_ENDPOINT, GPIO_NUM_23, NULL}};
 
-static void zb_binary_sensor_handler(sensor_func_pair_t *sensor_func_pair)
-{
-    if (esp_zb_bdb_dev_joined())
-    {
-        // Toggle the binary sensor state
-        bool sensor_state = sensor_func_pair->func == SENSOR_TOGGLE_CONTROLL_ON ? true : false;
-
-        ESP_LOGI(TAG, "Sensor changed detected - state is: %s", sensor_state ? "On" : "Off");
-
-        esp_zb_lock_acquire(portMAX_DELAY);
-
-        // Update the attribute value
-        ESP_ERROR_CHECK(esp_zb_zcl_set_attribute_val(sensor_func_pair->endpoint,
-                                                     ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
-                                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-                                                     ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
-                                                     &sensor_state, false));
-
-        esp_zb_lock_release();
-
-        // Small delay before reporting to ensure attribute is set
-        vTaskDelay(pdMS_TO_TICKS(10));
-
-        // Report the attribute change to the coordinator (Home Assistant)
-        esp_zb_lock_acquire(portMAX_DELAY);
-
-        esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
-            .zcl_basic_cmd = {
-                .src_endpoint = sensor_func_pair->endpoint,
-            },
-            .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
-            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
-            .attributeID = ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
-            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
-        };
-        ESP_ERROR_CHECK(esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd));
-
-        esp_zb_lock_release();
-
-        ESP_EARLY_LOGI(TAG, "Binary sensor state: %s", sensor_state ? "On" : "Off");
-    }
-}
-
-static void zb_ultrasonic_sensor_handler(ultrasonic_sensor_func_pair_t *ultrasonic_sensor_func_pair)
-{
-    // Check if we're connected to the network before trying to report
-    if (esp_zb_bdb_dev_joined())
-    {
-        bool ultrasonic_state = (ultrasonic_sensor_func_pair->func == ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED);
-
-        ESP_LOGI(TAG, "Ultrasonic sensor changed detected - endpoint %d, state is: %s",
-                 ultrasonic_sensor_func_pair->endpoint,
-                 ultrasonic_state ? "Occupied" : "Unoccupied");
-
-        esp_zb_lock_acquire(portMAX_DELAY);
-
-        uint8_t occupancy_value = ultrasonic_state ? ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED : ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
-
-        esp_zb_zcl_set_attribute_val(ultrasonic_sensor_func_pair->endpoint,
-                                     ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
-                                     ESP_ZB_ZCL_CLUSTER_SERVER_ROLE,
-                                     ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
-                                     &occupancy_value, false);
-
-        esp_zb_lock_release();
-
-        // Small delay before reporting
-        vTaskDelay(pdMS_TO_TICKS(50));
-
-        // Report the attribute change
-        esp_zb_lock_acquire(portMAX_DELAY);
-
-        esp_zb_zcl_report_attr_cmd_t report_attr_cmd = {
-            .zcl_basic_cmd = {
-                .src_endpoint = ultrasonic_sensor_func_pair->endpoint,
-            },
-            .address_mode = ESP_ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
-            .clusterID = ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
-            .attributeID = ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
-            .direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI,
-        };
-
-        esp_err_t err = esp_zb_zcl_report_attr_cmd_req(&report_attr_cmd);
-
-        esp_zb_lock_release();
-
-        if (err != ESP_OK)
-        {
-            ESP_LOGE(TAG, "Failed to report ultrasonic sensor attribute: %s", esp_err_to_name(err));
-        }
-        else
-        {
-            ESP_LOGI(TAG, "Ultrasonic sensor state reported to coordinator");
-        }
-    }
-    else
-    {
-        ESP_LOGW(TAG, "Ultrasonic sensor changed but device not joined to network yet, skipping report");
-    }
-}
-
 static esp_err_t deferred_driver_init(void)
 {
     // Initialize LED for Identify functionality
@@ -178,10 +77,10 @@ static esp_err_t deferred_driver_init(void)
 
     relay_driver_init(relay_func_pair, SENSOR_PAIR_SIZE(relay_func_pair));
 
-    ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), zb_binary_sensor_handler), ESP_FAIL, TAG,
+    ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), binary_sensor_zb_handler), ESP_FAIL, TAG,
                         "Failed to initialize binary sensor");
 
-    ESP_RETURN_ON_FALSE(ultrasonic_sensor_init(ultrasonic_sensor_func_pair, SENSOR_PAIR_SIZE(ultrasonic_sensor_func_pair), zb_ultrasonic_sensor_handler), ESP_FAIL, TAG,
+    ESP_RETURN_ON_FALSE(ultrasonic_sensor_init(ultrasonic_sensor_func_pair, SENSOR_PAIR_SIZE(ultrasonic_sensor_func_pair), ultrasonic_sensor_zb_handler), ESP_FAIL, TAG,
                         "Failed to initialize ultrasonic sensor");
     return ESP_OK;
 }
