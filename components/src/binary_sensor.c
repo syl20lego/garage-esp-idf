@@ -42,8 +42,9 @@
 #include "binary_sensor.h"
 
 #define ESP_INTR_FLAG_DEFAULT 0
-#define DEBOUNCE_TIME_MS 600
-#define DEBOUNCE_SAMPLES 3
+#define DEBOUNCE_TIME_MS 100
+#define DEBOUNCE_SAMPLES 5
+#define DEBOUNCE_SAMPLE_INTERVAL_MS 20
 
 static QueueHandle_t gpio_evt_queue = NULL;
 /* button function pair, should be defined in switch example source file */
@@ -56,7 +57,8 @@ static const char *TAG = "ESP_ZB_SENSOR";
 
 static void IRAM_ATTR gpio_isr_handler(void *arg)
 {
-    xQueueSendFromISR(gpio_evt_queue, (sensor_func_pair_t *)arg, NULL);
+    sensor_func_pair_t *sensor = (sensor_func_pair_t *)arg;
+    xQueueSendFromISR(gpio_evt_queue, &sensor, NULL);
 }
 
 /**
@@ -120,7 +122,34 @@ esp_zb_cluster_list_t *garage_binary_sensor_ep_create(esp_zb_ep_list_t *ep_list,
 
     */
     esp_zb_attribute_list_t *binary_input_cluster = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT);
-    esp_zb_binary_input_cluster_add_attr(binary_input_cluster, ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID, &(bool){false});
+
+    // Add PresentValue attribute with REPORTABLE access flag - this is required for Home Assistant to receive unsolicited reports
+    bool present_value = false;
+    esp_zb_cluster_add_attr(binary_input_cluster,
+                            ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
+                            ESP_ZB_ZCL_ATTR_BINARY_INPUT_PRESENT_VALUE_ID,
+                            ESP_ZB_ZCL_ATTR_TYPE_BOOL,
+                            ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING,
+                            &present_value);
+
+    // Add OutOfService attribute (mandatory for Binary Input cluster)
+    bool out_of_service = false;
+    esp_zb_cluster_add_attr(binary_input_cluster,
+                            ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
+                            ESP_ZB_ZCL_ATTR_BINARY_INPUT_OUT_OF_SERVICE_ID,
+                            ESP_ZB_ZCL_ATTR_TYPE_BOOL,
+                            ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE,
+                            &out_of_service);
+
+    // Add StatusFlags attribute (mandatory for Binary Input cluster)
+    uint8_t status_flags = 0;
+    esp_zb_cluster_add_attr(binary_input_cluster,
+                            ESP_ZB_ZCL_CLUSTER_ID_BINARY_INPUT,
+                            ESP_ZB_ZCL_ATTR_BINARY_INPUT_STATUS_FLAGS_ID,
+                            ESP_ZB_ZCL_ATTR_TYPE_8BITMAP,
+                            ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING,
+                            &status_flags);
+
     esp_zb_binary_input_cluster_add_attr(binary_input_cluster, ESP_ZB_ZCL_ATTR_BINARY_INPUT_DESCRIPTION_ID, sensor_cfg->sensor_name);
     esp_zb_cluster_list_add_binary_input_cluster(cluster_list, binary_input_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
@@ -237,19 +266,30 @@ esp_zb_cluster_list_t *garage_binary_sensor_ep_create(esp_zb_ep_list_t *ep_list,
  */
 static void binary_sensor_detected(void *arg)
 {
-    gpio_num_t io_num = GPIO_NUM_NC;
-    sensor_func_pair_t sensor_func_pair;
-    static binary_sensor_state_t sensor_state = SENSOR_IDLE;
+    sensor_func_pair_t *received_sensor;
 
     for (;;)
     {
-        /* check if there is any queue received, if yes read out the sensor_func_pair */
-        if (xQueueReceive(gpio_evt_queue, &sensor_func_pair, portMAX_DELAY))
+        /* check if there is any queue received, if yes read out the sensor_func_pair pointer */
+        if (xQueueReceive(gpio_evt_queue, &received_sensor, portMAX_DELAY))
         {
-            io_num = sensor_func_pair.pin;
+            gpio_num_t io_num = received_sensor->pin;
             binary_sensor_gpios_intr_enabled(false);
 
-            // Debounce: wait for stable state
+            // Flush queue - discard any pending events for this pin (handle rapid toggles)
+            sensor_func_pair_t *temp_sensor;
+            while (xQueueReceive(gpio_evt_queue, &temp_sensor, 0) == pdTRUE)
+            {
+                // If it's a different sensor, put it back and break
+                if (temp_sensor->pin != io_num)
+                {
+                    xQueueSendToFront(gpio_evt_queue, &temp_sensor, 0);
+                    break;
+                }
+                // Otherwise discard - we'll read the final state after debounce
+            }
+
+            // Initial debounce wait
             vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_TIME_MS));
 
             // Read GPIO level multiple times to confirm stable state
@@ -258,7 +298,7 @@ static void binary_sensor_detected(void *arg)
 
             for (int i = 0; i < DEBOUNCE_SAMPLES; i++)
             {
-                vTaskDelay(pdMS_TO_TICKS(10));
+                vTaskDelay(pdMS_TO_TICKS(DEBOUNCE_SAMPLE_INTERVAL_MS));
                 bool current_value = gpio_get_level(io_num);
 
                 if (current_value == last_value)
@@ -276,7 +316,7 @@ static void binary_sensor_detected(void *arg)
             if (stable_count >= DEBOUNCE_SAMPLES - 1)
             {
                 bool value = last_value;
-                bool normal_level = sensor_func_pair.normal_level;
+                bool normal_level = received_sensor->normal_level;
 
                 // Determine new state based on GPIO level
                 binary_sensor_state_t new_state = (value == normal_level) ? SENSOR_DETECTED : SENSOR_IDLE;
@@ -285,22 +325,23 @@ static void binary_sensor_detected(void *arg)
                          io_num, value, normal_level,
                          new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
 
-                // Only process if state actually changed
-                if (new_state != sensor_state)
+                // Only process if state actually changed (use per-sensor state tracking)
+                if (new_state != received_sensor->last_state)
                 {
                     ESP_LOGI(TAG, "Sensor state changed: %s -> %s",
-                             sensor_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
+                             received_sensor->last_state == SENSOR_IDLE ? "IDLE" : "DETECTED",
                              new_state == SENSOR_IDLE ? "IDLE" : "DETECTED");
 
-                    sensor_state = new_state;
+                    // Update per-sensor state
+                    received_sensor->last_state = new_state;
 
-                    // Update the sensor_func_pair func field to match the state
-                    sensor_func_pair.func = (new_state == SENSOR_DETECTED) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF;
+                    // Update the func field to match the state
+                    received_sensor->func = (new_state == SENSOR_DETECTED) ? SENSOR_TOGGLE_CONTROLL_ON : SENSOR_TOGGLE_CONTROLL_OFF;
 
                     // Call the callback to notify the application
                     if (func_ptr)
                     {
-                        func_ptr(&sensor_func_pair);
+                        func_ptr(received_sensor);
                     }
                 }
                 else
@@ -344,8 +385,8 @@ static bool binary_sensor_gpio_init(sensor_func_pair_t *sensor_func_pair, uint8_
     io_conf.pull_up_en = 1;
     /* configure GPIO with the given settings */
     gpio_config(&io_conf);
-    /* create a queue to handle gpio event from isr */
-    gpio_evt_queue = xQueueCreate(10, sizeof(sensor_func_pair_t));
+    /* create a queue to handle gpio event from isr - stores pointers to sensor_func_pair */
+    gpio_evt_queue = xQueueCreate(10, sizeof(sensor_func_pair_t *));
     if (gpio_evt_queue == 0)
     {
         ESP_LOGE(TAG, "Queue was not created and must not be used");
@@ -450,7 +491,7 @@ void binary_sensor_zb_handler(sensor_func_pair_t *sensor_func_pair)
         esp_zb_lock_release();
 
         // Small delay before reporting to ensure attribute is set
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(100));
 
         // Report the attribute change to the coordinator (Home Assistant)
         esp_zb_lock_acquire(portMAX_DELAY);

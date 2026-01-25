@@ -59,8 +59,8 @@ static const char *TAG = "ESP_ZB_GARAGE";
 /********************* Define functions **************************/
 
 static sensor_func_pair_t sensor_func_pair[] = {
-    {HA_BINARY_SENSOR_ENDPOINT_1, GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO},
-    {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO}};
+    {HA_BINARY_SENSOR_ENDPOINT_1, GPIO_NUM_21, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO, SENSOR_IDLE},
+    {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO, SENSOR_IDLE}};
 
 static ultrasonic_sensor_func_pair_t ultrasonic_sensor_func_pair[] = {
     {HA_ULTRASONIC_SENSOR_ENDPOINT_1, GPIO_NUM_10, GPIO_NUM_11, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
@@ -406,6 +406,10 @@ static void esp_zb_task(void *pvParameters)
 
 void app_main(void)
 {
+    // IMPORTANT: Initialize relay GPIO as early as possible to prevent false activation on boot
+    // This must be done before any other initialization that might cause delays
+    relay_driver_early_init(GPIO_NUM_23); // Relay GPIO pin
+
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config = ESP_ZB_DEFAULT_HOST_CONFIG(),

@@ -67,6 +67,7 @@ extern "C"
         gpio_num_t pin;
         sensor_func_t func;
         bool normal_level;
+        binary_sensor_state_t last_state; // Track per-sensor state to avoid race conditions
     } sensor_func_pair_t;
 
     typedef void (*esp_sensor_callback_t)(sensor_func_pair_t *param);

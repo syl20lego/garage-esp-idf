@@ -159,5 +159,7 @@ Using USB or on Linux
 Using UART or on MacOS  
 
 `ls /dev/cu.*`
-` idf.py -p /dev/cu.usbmodem1401 flash`
+`idf.py -p /dev/cu.usbmodem1401 flash`
 `idf.py -p /dev/cu.usbmodem1401 erase-flash`
+`idf.py -p /dev/cu.usbmodem1401 monitor`
+

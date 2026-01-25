@@ -72,6 +72,15 @@ extern "C"
     } esp_zb_ep_on_off_light_cfg_t;
 
     /**
+     * @brief Early GPIO initialization for relay pins to prevent false activation on boot.
+     *        Call this as early as possible in app_main, before any other initialization.
+     *        This sets relay GPIO pins HIGH (relay OFF) before the full driver init.
+     *
+     * @param gpio_pin The GPIO pin number for the relay
+     */
+    void relay_driver_early_init(gpio_num_t gpio_pin);
+
+    /**
      * @brief Initialize relay driver with multiple relays
      * @param relay_pairs Array of relay configurations
      * @param relay_pair_count Number of relays in the array

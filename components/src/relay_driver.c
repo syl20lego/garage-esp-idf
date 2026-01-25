@@ -268,6 +268,28 @@ void relay_driver_set_power(bool power, uint8_t endpoint)
     }
 }
 
+void relay_driver_early_init(gpio_num_t gpio_pin)
+{
+    // Set GPIO HIGH immediately to prevent relay activation during boot
+    // This should be called as early as possible in app_main
+    gpio_set_level(gpio_pin, 1);
+
+    // Quick configuration to ensure pin is output and HIGH
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << gpio_pin),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    // Set HIGH again after config
+    gpio_set_level(gpio_pin, 1);
+
+    ESP_EARLY_LOGI(TAG, "Early relay init: GPIO %d set HIGH (relay OFF)", gpio_pin);
+}
+
 void relay_driver_init(relay_func_pair_t *relay_pairs, uint8_t relay_pair_count)
 {
     // Store relay configurations
@@ -281,23 +303,29 @@ void relay_driver_init(relay_func_pair_t *relay_pairs, uint8_t relay_pair_count)
         // Initialize task handle to NULL
         relay_pairs[i].pulse_task_handle = NULL;
 
-        // Configure GPIO as output
+        // IMPORTANT: Set GPIO level HIGH (relay OFF) BEFORE configuring as output
+        // This prevents false activation during boot when pin state is undefined
+        gpio_set_level(gpio, 1);
+
+        // Reset and configure GPIO
         gpio_reset_pin(gpio);
-        gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
+
+        // Set level again immediately after reset (reset may change it)
+        gpio_set_level(gpio, 1);
 
         gpio_config_t io_conf = {
             .pin_bit_mask = (1ULL << gpio),
             .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_up_en = GPIO_PULLUP_ENABLE, // Enable pull-up to keep relay OFF during boot
             .pull_down_en = GPIO_PULLDOWN_DISABLE,
             .intr_type = GPIO_INTR_DISABLE,
         };
         gpio_config(&io_conf);
 
-        // Set initial state to HIGH (relay OFF)
+        // Set level once more after full configuration to ensure relay is OFF
         gpio_set_level(gpio, 1);
 
-        ESP_LOGI(TAG, "Relay GPIO initialized on pin %d for endpoint %d", gpio, relay_pairs[i].endpoint);
+        ESP_LOGI(TAG, "Relay GPIO initialized on pin %d for endpoint %d (relay OFF)", gpio, relay_pairs[i].endpoint);
     }
 }
 

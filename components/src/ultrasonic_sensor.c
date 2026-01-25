@@ -155,9 +155,14 @@ esp_zb_cluster_list_t *garage_ultrasonic_sensor_ep_create(esp_zb_ep_list_t *ep_l
 
     */
     esp_zb_attribute_list_t *input_cluster = esp_zb_zcl_attr_list_create(ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING);
-    // Occupancy attribute (map8, 0x0000)
+    // Occupancy attribute (map8, 0x0000) - add with REPORTABLE access flag for Home Assistant
     uint8_t occupancy = ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
-    esp_zb_occupancy_sensing_cluster_add_attr(input_cluster, ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID, &occupancy);
+    esp_zb_cluster_add_attr(input_cluster,
+                            ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+                            ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+                            ESP_ZB_ZCL_ATTR_TYPE_8BITMAP,
+                            ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING,
+                            &occupancy);
 
     /*
      4.8.2.2.1.2 OccupancySensorType Attribute
