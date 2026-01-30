@@ -392,10 +392,10 @@ static void esp_zb_task(void *pvParameters)
     garage_ultrasonic_sensor_ep_create(esp_zb_ep_list, &ultrasonic_cfg2);
 
     /*
-    Endpoint 10 for Relay device
+    Endpoint 10 for Relay device (On/Off Output)
     */
-    esp_zb_ep_on_off_light_cfg_t light_cfg = ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(HA_RELAY_ENDPOINT);
-    garage_on_off_relay_ep_create(esp_zb_ep_list, &light_cfg);
+    esp_zb_ep_on_off_output_cfg_t output_cfg = ESP_ZB_DEFAULT_EP_ON_OFF_OUTPUT_CONFIG(HA_RELAY_ENDPOINT);
+    garage_on_off_relay_ep_create(esp_zb_ep_list, &output_cfg);
 
     // Add manufacturer info to all endpoints
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_RELAY_ENDPOINT, &info);

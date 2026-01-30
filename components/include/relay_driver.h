@@ -46,15 +46,27 @@ extern "C"
 {
 #endif
 
-/* light intensity level */
+/* relay state level */
 #define RELAY_DEFAULT_ON 1
 #define RELAY_DEFAULT_OFF 0
 
-// Macro to create default config with endpoint
-#define ESP_ZB_DEFAULT_EP_ON_OFF_LIGHT_CONFIG(ep)          \
-    {                                                      \
-        .light_cfg = ESP_ZB_DEFAULT_ON_OFF_LIGHT_CONFIG(), \
-        .endpoint = ep,                                    \
+// Macro to create default config with endpoint for On/Off Output device
+#define ESP_ZB_DEFAULT_EP_ON_OFF_OUTPUT_CONFIG(ep)                                \
+    {                                                                             \
+        .basic_cfg =                                                              \
+            {                                                                     \
+                .zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,        \
+                .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE,      \
+            },                                                                    \
+        .identify_cfg =                                                           \
+            {                                                                     \
+                .identify_time = ESP_ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE, \
+            },                                                                    \
+        .on_off_cfg =                                                             \
+            {                                                                     \
+                .on_off = ESP_ZB_ZCL_ON_OFF_ON_OFF_DEFAULT_VALUE,                 \
+            },                                                                    \
+        .endpoint = ep,                                                           \
     }
 
     typedef struct relay_func_pair_s
@@ -64,12 +76,14 @@ extern "C"
         TaskHandle_t pulse_task_handle;
     } relay_func_pair_t;
 
-    // Extended config struct that includes endpoint configuration
+    // Extended config struct for On/Off Output device
     typedef struct
     {
-        esp_zb_on_off_light_cfg_t light_cfg;
+        esp_zb_basic_cluster_cfg_t basic_cfg;
+        esp_zb_identify_cluster_cfg_t identify_cfg;
+        esp_zb_on_off_cluster_cfg_t on_off_cfg;
         uint8_t endpoint;
-    } esp_zb_ep_on_off_light_cfg_t;
+    } esp_zb_ep_on_off_output_cfg_t;
 
     /**
      * @brief Early GPIO initialization for relay pins to prevent false activation on boot.
@@ -88,13 +102,13 @@ extern "C"
     void relay_driver_init(relay_func_pair_t *relay_pairs, uint8_t relay_pair_count);
 
     /**
-     * @brief Create on/off light endpoint with configuration
+     * @brief Create on/off output endpoint with configuration
      *
-     * @param[in] ep_list Endpoint list to add the light endpoint to
-     * @param[in] ep_light_cfg Extended configuration including endpoint ID
-     * @return Cluster list for the light endpoint
+     * @param[in] ep_list Endpoint list to add the output endpoint to
+     * @param[in] ep_output_cfg Extended configuration including endpoint ID
+     * @return Cluster list for the output endpoint
      */
-    esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ep_on_off_light_cfg_t *ep_light_cfg);
+    esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *ep_list, esp_zb_ep_on_off_output_cfg_t *ep_output_cfg);
 
     /**
      * @brief Callback when a relay device is found
