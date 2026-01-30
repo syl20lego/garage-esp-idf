@@ -108,12 +108,35 @@ extern "C"
 
     /**
      * @brief Set relay power (on/off) with automatic pulse handling.
-     *        When turned on, relay will pulse for 3 seconds then turn off.
+     *        When turned on, relay will pulse for configured duration then turn off.
      *
      * @param  power    The relay power to be set (true = pulse, false = force off)
      * @param  endpoint The endpoint ID for reporting status back to coordinator
      */
     void relay_driver_set_power(bool power, uint8_t endpoint);
+
+    /**
+     * @brief Load relay settings from NVS (call during initialization)
+     */
+    void relay_driver_load_settings(void);
+
+    /**
+     * @brief Get the current relay pulse duration
+     * @return Pulse duration in milliseconds
+     */
+    uint16_t relay_driver_get_pulse_duration_ms(void);
+
+    /**
+     * @brief Set the relay pulse duration
+     * @param duration_ms Pulse duration in milliseconds (min 100, max 30000)
+     */
+    void relay_driver_set_pulse_duration_ms(uint16_t duration_ms);
+
+    /**
+     * @brief Set the relay pulse duration from Zigbee OnTime attribute
+     * @param on_time_tenth_seconds OnTime value in 1/10th of a second units
+     */
+    void relay_driver_set_pulse_duration_from_ontime(uint16_t on_time_tenth_seconds);
 
 #ifdef __cplusplus
 } // extern "C"

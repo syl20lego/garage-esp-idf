@@ -42,12 +42,24 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "string.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 
 static const char *TAG = "GARAGE_DRIVER";
+
+// NVS storage keys
+#define NVS_NAMESPACE "relay"
+#define NVS_KEY_PULSE_DURATION "pulse_dur"
+
+// Default pulse duration in milliseconds (0.5 seconds)
+#define RELAY_PULSE_DURATION_DEFAULT_MS 500
 
 // Store relay configurations
 static relay_func_pair_t *s_relay_pairs = NULL;
 static uint8_t s_relay_pair_count = 0;
+
+// Configurable pulse duration in milliseconds
+static uint16_t s_relay_pulse_duration_ms = RELAY_PULSE_DURATION_DEFAULT_MS;
 
 typedef struct relay_device_params_s
 {
@@ -159,13 +171,13 @@ static void relay_pulse_task(void *arg)
     gpio_num_t gpio = params->gpio;
     relay_func_pair_t *relay_pair = params->relay_pair;
 
-    ESP_LOGI(TAG, "Relay pulse started - GPIO %d LOW for 3 seconds (endpoint %d)", gpio, endpoint);
+    ESP_LOGI(TAG, "Relay pulse started - GPIO %d LOW for %d ms (endpoint %d)", gpio, s_relay_pulse_duration_ms, endpoint);
 
     // Set GPIO LOW (relay ON)
     gpio_set_level(gpio, 0);
 
-    // Wait 3 seconds
-    vTaskDelay(pdMS_TO_TICKS(3000));
+    // Wait for configured pulse duration
+    vTaskDelay(pdMS_TO_TICKS(s_relay_pulse_duration_ms));
 
     // Set GPIO HIGH (relay OFF)
     gpio_set_level(gpio, 1);
@@ -347,6 +359,17 @@ esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *esp_zb_ep
     esp_zb_cluster_list_add_scenes_cluster(cluster_list, scenes_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
     // On/Off cluster
     esp_zb_attribute_list_t *on_off_cluster = esp_zb_on_off_cluster_create(&ep_light_cfg->light_cfg.on_off_cfg);
+
+    // Add OnTime attribute (0x4001) for configurable pulse duration
+    // OnTime is in 1/10th of a second units, so 5 = 0.5 seconds
+    uint16_t on_time = s_relay_pulse_duration_ms / 100; // Convert ms to 1/10s units
+    esp_zb_cluster_add_attr(on_off_cluster,
+                            ESP_ZB_ZCL_CLUSTER_ID_ON_OFF,
+                            ESP_ZB_ZCL_ATTR_ON_OFF_ON_TIME,
+                            ESP_ZB_ZCL_ATTR_TYPE_U16,
+                            ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE,
+                            &on_time);
+
     esp_zb_cluster_list_add_on_off_cluster(cluster_list, on_off_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
     /*
@@ -452,4 +475,79 @@ esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *esp_zb_ep
     // Add light end point to endpoint list
     esp_zb_ep_list_add_ep(esp_zb_ep_list, cluster_list, light_endpoint_config);
     return cluster_list;
+}
+
+void relay_driver_load_settings(void)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (err == ESP_OK)
+    {
+        uint16_t saved_duration = RELAY_PULSE_DURATION_DEFAULT_MS;
+        err = nvs_get_u16(nvs_handle, NVS_KEY_PULSE_DURATION, &saved_duration);
+        if (err == ESP_OK)
+        {
+            s_relay_pulse_duration_ms = saved_duration;
+            ESP_LOGI(TAG, "Loaded pulse duration from NVS: %d ms", s_relay_pulse_duration_ms);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "No saved pulse duration, using default: %d ms", RELAY_PULSE_DURATION_DEFAULT_MS);
+        }
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Failed to open NVS for reading: %s", esp_err_to_name(err));
+    }
+}
+
+uint16_t relay_driver_get_pulse_duration_ms(void)
+{
+    return s_relay_pulse_duration_ms;
+}
+
+void relay_driver_set_pulse_duration_ms(uint16_t duration_ms)
+{
+    // Enforce minimum of 100ms and maximum of 30000ms (30 seconds)
+    if (duration_ms < 100)
+    {
+        duration_ms = 100;
+    }
+    else if (duration_ms > 30000)
+    {
+        duration_ms = 30000;
+    }
+
+    s_relay_pulse_duration_ms = duration_ms;
+    ESP_LOGI(TAG, "Pulse duration set to: %d ms", s_relay_pulse_duration_ms);
+
+    // Save to NVS
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK)
+    {
+        err = nvs_set_u16(nvs_handle, NVS_KEY_PULSE_DURATION, duration_ms);
+        if (err == ESP_OK)
+        {
+            nvs_commit(nvs_handle);
+            ESP_LOGI(TAG, "Saved pulse duration to NVS: %d ms", duration_ms);
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Failed to save pulse duration to NVS: %s", esp_err_to_name(err));
+        }
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "Failed to open NVS for writing: %s", esp_err_to_name(err));
+    }
+}
+
+void relay_driver_set_pulse_duration_from_ontime(uint16_t on_time_tenth_seconds)
+{
+    // OnTime is in 1/10th of a second units, convert to milliseconds
+    uint16_t duration_ms = on_time_tenth_seconds * 100;
+    relay_driver_set_pulse_duration_ms(duration_ms);
 }

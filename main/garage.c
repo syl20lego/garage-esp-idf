@@ -73,6 +73,8 @@ static esp_err_t deferred_driver_init(void)
     // Initialize LED for Identify functionality
     identify_led_init();
 
+    // Load relay settings from NVS before initializing the driver
+    relay_driver_load_settings();
     relay_driver_init(relay_func_pair, SENSOR_PAIR_SIZE(relay_func_pair));
 
     ESP_RETURN_ON_FALSE(binary_sensor_init(sensor_func_pair, SENSOR_PAIR_SIZE(sensor_func_pair), binary_sensor_zb_handler), ESP_FAIL, TAG,
@@ -260,6 +262,13 @@ static esp_err_t garage_set_attribute_handler(const esp_zb_zcl_set_attr_value_me
                 relay_state = message->attribute.data.value ? *(bool *)message->attribute.data.value : relay_state;
                 ESP_LOGI(TAG, "Relay sets to %s", relay_state ? "On" : "Off");
                 relay_driver_set_power(relay_state, message->info.dst_endpoint);
+            }
+            else if (message->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_TIME && message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16)
+            {
+                // OnTime is in 1/10th of a second units
+                uint16_t on_time = message->attribute.data.value ? *(uint16_t *)message->attribute.data.value : 5;
+                ESP_LOGI(TAG, "Relay pulse duration set to %d (1/10s units) = %d ms via Zigbee", on_time, on_time * 100);
+                relay_driver_set_pulse_duration_from_ontime(on_time);
             }
         }
     }
