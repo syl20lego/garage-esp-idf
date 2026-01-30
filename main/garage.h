@@ -49,6 +49,7 @@
 #define HA_BINARY_SENSOR_ENDPOINT_1 2     /* esp binaray sensor device endpoint 1 */
 #define HA_BINARY_SENSOR_ENDPOINT_2 3     /* esp binaray sensor device endpoint 2 */
 #define HA_ULTRASONIC_SENSOR_ENDPOINT_1 4 /* esp ultrasonic sensor device endpoint 1 */
+#define HA_ULTRASONIC_SENSOR_ENDPOINT_2 5 /* esp ultrasonic sensor device endpoint 2 */
 #define HA_RELAY_ENDPOINT 10              /* esp light bulb device endpoint, used to process light controlling commands */
 
 /* Basic manufacturer information */

@@ -547,18 +547,32 @@ static bool ultrasonic_sensor_gpio_init(ultrasonic_sensor_func_pair_t *sensor_fu
     ultrasonic_sensor_func_pair = sensor_func_pair_param;
     switch_num = sensor_num;
 
+    // Track which trigger pins have been configured to avoid redundant configuration
+    // when multiple sensors share the same trigger pin
+    uint64_t configured_triggers = 0;
+
     for (int i = 0; i < sensor_num; i++)
     {
-        // Configure trigger pin as output
-        gpio_config_t trigger_conf = {
-            .pin_bit_mask = (1ULL << sensor_func_pair_param[i].trigger),
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE,
-        };
-        gpio_config(&trigger_conf);
-        gpio_set_level(sensor_func_pair_param[i].trigger, 0);
+        // Configure trigger pin as output (only if not already configured)
+        uint64_t trigger_mask = (1ULL << sensor_func_pair_param[i].trigger);
+        if ((configured_triggers & trigger_mask) == 0)
+        {
+            gpio_config_t trigger_conf = {
+                .pin_bit_mask = trigger_mask,
+                .mode = GPIO_MODE_OUTPUT,
+                .pull_up_en = GPIO_PULLUP_DISABLE,
+                .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                .intr_type = GPIO_INTR_DISABLE,
+            };
+            gpio_config(&trigger_conf);
+            gpio_set_level(sensor_func_pair_param[i].trigger, 0);
+            configured_triggers |= trigger_mask;
+            ESP_LOGI(TAG, "Configured trigger GPIO%d", sensor_func_pair_param[i].trigger);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Trigger GPIO%d already configured (shared)", sensor_func_pair_param[i].trigger);
+        }
 
         // Configure echo pin as input
         gpio_config_t echo_conf = {

@@ -63,7 +63,8 @@ static sensor_func_pair_t sensor_func_pair[] = {
     {HA_BINARY_SENSOR_ENDPOINT_2, GPIO_NUM_22, SENSOR_TOGGLE_CONTROLL_OFF, GPIO_INPUT_PU_NO, SENSOR_IDLE}};
 
 static ultrasonic_sensor_func_pair_t ultrasonic_sensor_func_pair[] = {
-    {HA_ULTRASONIC_SENSOR_ENDPOINT_1, GPIO_NUM_10, GPIO_NUM_11, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
+    {HA_ULTRASONIC_SENSOR_ENDPOINT_1, GPIO_NUM_18, GPIO_NUM_19, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED},
+    {HA_ULTRASONIC_SENSOR_ENDPOINT_2, GPIO_NUM_18, GPIO_NUM_20, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
 
 static relay_func_pair_t relay_func_pair[] = {
     {HA_RELAY_ENDPOINT, GPIO_NUM_23, NULL}};
@@ -272,7 +273,8 @@ static esp_err_t garage_set_attribute_handler(const esp_zb_zcl_set_attr_value_me
             }
         }
     }
-    else if (message->info.dst_endpoint == HA_ULTRASONIC_SENSOR_ENDPOINT_1)
+    else if (message->info.dst_endpoint == HA_ULTRASONIC_SENSOR_ENDPOINT_1 ||
+             message->info.dst_endpoint == HA_ULTRASONIC_SENSOR_ENDPOINT_2)
     {
         if (message->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING)
         {
@@ -280,21 +282,21 @@ static esp_err_t garage_set_attribute_handler(const esp_zb_zcl_set_attr_value_me
                 message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U8)
             {
                 uint8_t threshold = message->attribute.data.value ? *(uint8_t *)message->attribute.data.value : 0;
-                ESP_LOGI(TAG, "Ultrasonic detection threshold set to %d cm via Zigbee", threshold);
+                ESP_LOGI(TAG, "Ultrasonic detection threshold set to %d cm via Zigbee (endpoint %d)", threshold, message->info.dst_endpoint);
                 ultrasonic_sensor_set_threshold(threshold);
             }
             else if (message->attribute.id == ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_OCCUPIED_TO_UNOCCUPIED_DELAY_ID &&
                      message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16)
             {
                 uint16_t delay = message->attribute.data.value ? *(uint16_t *)message->attribute.data.value : 0;
-                ESP_LOGI(TAG, "Ultrasonic O2U delay set to %d s via Zigbee", delay);
+                ESP_LOGI(TAG, "Ultrasonic O2U delay set to %d s via Zigbee (endpoint %d)", delay, message->info.dst_endpoint);
                 ultrasonic_sensor_set_o2u_delay(delay);
             }
             else if (message->attribute.id == ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_ULTRASONIC_UNOCCUPIED_TO_OCCUPIED_DELAY_ID &&
                      message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16)
             {
                 uint16_t delay = message->attribute.data.value ? *(uint16_t *)message->attribute.data.value : 0;
-                ESP_LOGI(TAG, "Ultrasonic U2O delay set to %d s via Zigbee", delay);
+                ESP_LOGI(TAG, "Ultrasonic U2O delay set to %d s via Zigbee (endpoint %d)", delay, message->info.dst_endpoint);
                 ultrasonic_sensor_set_u2o_delay(delay);
             }
         }
@@ -378,10 +380,16 @@ static void esp_zb_task(void *pvParameters)
     garage_binary_sensor_ep_create(esp_zb_ep_list, &sensor_cfg2);
 
     /*
-    Endpoint 3 Ultrasonic Sensor device
+    Endpoint 4 Ultrasonic Sensor device 1
     */
-    esp_zb_ultrasonic_sensor_cfg_t ultrasonic_cfg = ESP_ZB_DEFAULT_ULTRASONIC_SENSOR_CONFIG(HA_ULTRASONIC_SENSOR_ENDPOINT_1);
-    garage_ultrasonic_sensor_ep_create(esp_zb_ep_list, &ultrasonic_cfg);
+    esp_zb_ultrasonic_sensor_cfg_t ultrasonic_cfg1 = ESP_ZB_DEFAULT_ULTRASONIC_SENSOR_CONFIG(HA_ULTRASONIC_SENSOR_ENDPOINT_1);
+    garage_ultrasonic_sensor_ep_create(esp_zb_ep_list, &ultrasonic_cfg1);
+
+    /*
+    Endpoint 5 Ultrasonic Sensor device 2
+    */
+    esp_zb_ultrasonic_sensor_cfg_t ultrasonic_cfg2 = ESP_ZB_DEFAULT_ULTRASONIC_SENSOR_CONFIG(HA_ULTRASONIC_SENSOR_ENDPOINT_2);
+    garage_ultrasonic_sensor_ep_create(esp_zb_ep_list, &ultrasonic_cfg2);
 
     /*
     Endpoint 10 for Relay device
@@ -394,6 +402,7 @@ static void esp_zb_task(void *pvParameters)
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_1, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_BINARY_SENSOR_ENDPOINT_2, &info);
     esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ULTRASONIC_SENSOR_ENDPOINT_1, &info);
+    esp_zcl_utility_add_ep_basic_manufacturer_info(esp_zb_ep_list, HA_ULTRASONIC_SENSOR_ENDPOINT_2, &info);
 
     // Register the single device with all endpoints
     esp_zb_device_register(esp_zb_ep_list);
@@ -406,6 +415,7 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_1, identify_led_notify_handler);
     esp_zb_identify_notify_handler_register(HA_BINARY_SENSOR_ENDPOINT_2, identify_led_notify_handler);
     esp_zb_identify_notify_handler_register(HA_ULTRASONIC_SENSOR_ENDPOINT_1, identify_led_notify_handler);
+    esp_zb_identify_notify_handler_register(HA_ULTRASONIC_SENSOR_ENDPOINT_2, identify_led_notify_handler);
 
     // Set primary channel mask and start the Zigbee stack
     esp_zb_set_primary_network_channel_set(ESP_ZB_PRIMARY_CHANNEL_MASK);
