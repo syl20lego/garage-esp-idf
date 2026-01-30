@@ -25,8 +25,9 @@ This quirk enables proper handling of the custom attributes on your ESP32-C6 gar
    mkdir -p /config/custom_zha_quirks
    ```
 
-2. Copy `espressif_garage.py` to the custom quirks directory:
+2. Copy both `__init__.py` and `espressif_garage.py` to the custom quirks directory:
    ```bash
+   cp __init__.py /config/custom_zha_quirks/
    cp espressif_garage.py /config/custom_zha_quirks/
    ```
 

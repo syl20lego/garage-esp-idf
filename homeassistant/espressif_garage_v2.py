@@ -174,7 +174,7 @@ class EspressifOccupancySensingClusterV2(CustomCluster, OccupancySensing):
             u2o_bus.listener_event("u2o_delay_reported", value)
 
 
-class EspressifGarageV2(CustomDevice):
+class EspressifGarage(CustomDevice):
     """ESPRESSIF ESP32-C6 Garage Controller V2.
     
     Device Endpoints:
