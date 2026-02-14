@@ -49,7 +49,7 @@ static const char *TAG = "GARAGE_DRIVER";
 
 // NVS storage keys
 #define NVS_NAMESPACE "relay"
-#define NVS_KEY_PULSE_DURATION "pulse_dur"
+#define NVS_KEY_PULSE_DURATION_PREFIX "pulse_dur_"
 
 // Default pulse duration in milliseconds (0.5 seconds)
 #define RELAY_PULSE_DURATION_DEFAULT_MS 500
@@ -57,9 +57,6 @@ static const char *TAG = "GARAGE_DRIVER";
 // Store relay configurations
 static relay_func_pair_t *s_relay_pairs = NULL;
 static uint8_t s_relay_pair_count = 0;
-
-// Configurable pulse duration in milliseconds
-static uint16_t s_relay_pulse_duration_ms = RELAY_PULSE_DURATION_DEFAULT_MS;
 
 typedef struct relay_device_params_s
 {
@@ -171,13 +168,23 @@ static void relay_pulse_task(void *arg)
     gpio_num_t gpio = params->gpio;
     relay_func_pair_t *relay_pair = params->relay_pair;
 
-    ESP_LOGI(TAG, "Relay pulse started - GPIO %d LOW for %d ms (endpoint %d)", gpio, s_relay_pulse_duration_ms, endpoint);
+    uint16_t pulse_duration = relay_pair->pulse_duration_ms;
+    if (pulse_duration == 0)
+    {
+        ESP_LOGI(TAG, "Relay pulse duration is set to 0 ms, relay is disabled. No action taken for endpoint %d", endpoint);
+        // Free the params
+        free(params);
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Relay pulse started - GPIO %d LOW for %d ms (endpoint %d)", gpio, pulse_duration, endpoint);
 
     // Set GPIO LOW (relay ON)
     gpio_set_level(gpio, 0);
 
     // Wait for configured pulse duration
-    vTaskDelay(pdMS_TO_TICKS(s_relay_pulse_duration_ms));
+    vTaskDelay(pdMS_TO_TICKS(pulse_duration));
 
     // Set GPIO HIGH (relay OFF)
     gpio_set_level(gpio, 1);
@@ -261,7 +268,7 @@ void relay_driver_set_power(bool power, uint8_t endpoint)
         params->gpio = relay_pair->gpio;
         params->relay_pair = relay_pair;
 
-        // Create task to handle the 3-second pulse
+        // Create task to handle the relay pulse for the specified duration
         xTaskCreate(relay_pulse_task, "relay_pulse", 2048, (void *)params, 5, &relay_pair->pulse_task_handle);
     }
     else
@@ -312,8 +319,9 @@ void relay_driver_init(relay_func_pair_t *relay_pairs, uint8_t relay_pair_count)
     {
         gpio_num_t gpio = relay_pairs[i].gpio;
 
-        // Initialize task handle to NULL
+        // Initialize task handle to NULL and set default pulse duration
         relay_pairs[i].pulse_task_handle = NULL;
+        relay_pairs[i].pulse_duration_ms = RELAY_PULSE_DURATION_DEFAULT_MS;
 
         // IMPORTANT: Set GPIO level HIGH (relay OFF) BEFORE configuring as output
         // This prevents false activation during boot when pin state is undefined
@@ -358,7 +366,9 @@ esp_zb_cluster_list_t *garage_on_off_relay_ep_create(esp_zb_ep_list_t *esp_zb_ep
 
     // Add OnTime attribute (0x4001) for configurable pulse duration
     // OnTime is in 1/10th of a second units, so 5 = 0.5 seconds
-    uint16_t on_time = s_relay_pulse_duration_ms / 100; // Convert ms to 1/10s units
+    relay_func_pair_t *relay_pair = find_relay_by_endpoint(ep_output_cfg->endpoint);
+    uint16_t duration_ms = relay_pair ? relay_pair->pulse_duration_ms : RELAY_PULSE_DURATION_DEFAULT_MS;
+    uint16_t on_time = duration_ms / 100; // Convert ms to 1/10s units
     esp_zb_cluster_add_attr(on_off_cluster,
                             ESP_ZB_ZCL_CLUSTER_ID_ON_OFF,
                             ESP_ZB_ZCL_ATTR_ON_OFF_ON_TIME,
@@ -479,16 +489,21 @@ void relay_driver_load_settings(void)
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle);
     if (err == ESP_OK)
     {
-        uint16_t saved_duration = RELAY_PULSE_DURATION_DEFAULT_MS;
-        err = nvs_get_u16(nvs_handle, NVS_KEY_PULSE_DURATION, &saved_duration);
-        if (err == ESP_OK)
+        for (uint8_t i = 0; i < s_relay_pair_count; i++)
         {
-            s_relay_pulse_duration_ms = saved_duration;
-            ESP_LOGI(TAG, "Loaded pulse duration from NVS: %d ms", s_relay_pulse_duration_ms);
-        }
-        else
-        {
-            ESP_LOGI(TAG, "No saved pulse duration, using default: %d ms", RELAY_PULSE_DURATION_DEFAULT_MS);
+            char key[16];
+            snprintf(key, sizeof(key), "%s%d", NVS_KEY_PULSE_DURATION_PREFIX, s_relay_pairs[i].endpoint);
+            uint16_t saved_duration = RELAY_PULSE_DURATION_DEFAULT_MS;
+            err = nvs_get_u16(nvs_handle, key, &saved_duration);
+            if (err == ESP_OK)
+            {
+                s_relay_pairs[i].pulse_duration_ms = saved_duration;
+                ESP_LOGI(TAG, "Loaded pulse duration for endpoint %d from NVS: %d ms", s_relay_pairs[i].endpoint, saved_duration);
+            }
+            else
+            {
+                ESP_LOGI(TAG, "No saved pulse duration for endpoint %d, using default: %d ms", s_relay_pairs[i].endpoint, RELAY_PULSE_DURATION_DEFAULT_MS);
+            }
         }
         nvs_close(nvs_handle);
     }
@@ -498,36 +513,46 @@ void relay_driver_load_settings(void)
     }
 }
 
-uint16_t relay_driver_get_pulse_duration_ms(void)
+uint16_t relay_driver_get_pulse_duration_ms(uint8_t endpoint)
 {
-    return s_relay_pulse_duration_ms;
+    relay_func_pair_t *relay_pair = find_relay_by_endpoint(endpoint);
+    if (relay_pair != NULL)
+    {
+        return relay_pair->pulse_duration_ms;
+    }
+    return RELAY_PULSE_DURATION_DEFAULT_MS;
 }
 
-void relay_driver_set_pulse_duration_ms(uint16_t duration_ms)
+void relay_driver_set_pulse_duration_ms(uint8_t endpoint, uint16_t duration_ms)
 {
-    // Enforce minimum of 100ms and maximum of 30000ms (30 seconds)
-    if (duration_ms < 100)
+    relay_func_pair_t *relay_pair = find_relay_by_endpoint(endpoint);
+    if (relay_pair == NULL)
+    {
+        ESP_LOGE(TAG, "No relay found for endpoint %d", endpoint);
+        return;
+    }
+
+    // Enforce minimum of 100ms but can also be set to 0 in that case the relay is disabled and will not respond to on/off commands
+    if (duration_ms < 100 && duration_ms != 0)
     {
         duration_ms = 100;
     }
-    else if (duration_ms > 30000)
-    {
-        duration_ms = 30000;
-    }
 
-    s_relay_pulse_duration_ms = duration_ms;
-    ESP_LOGI(TAG, "Pulse duration set to: %d ms", s_relay_pulse_duration_ms);
+    relay_pair->pulse_duration_ms = duration_ms;
+    ESP_LOGI(TAG, "Pulse duration for endpoint %d set to: %d ms", endpoint, duration_ms);
 
     // Save to NVS
     nvs_handle_t nvs_handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle);
     if (err == ESP_OK)
     {
-        err = nvs_set_u16(nvs_handle, NVS_KEY_PULSE_DURATION, duration_ms);
+        char key[16];
+        snprintf(key, sizeof(key), "%s%d", NVS_KEY_PULSE_DURATION_PREFIX, endpoint);
+        err = nvs_set_u16(nvs_handle, key, duration_ms);
         if (err == ESP_OK)
         {
             nvs_commit(nvs_handle);
-            ESP_LOGI(TAG, "Saved pulse duration to NVS: %d ms", duration_ms);
+            ESP_LOGI(TAG, "Saved pulse duration for endpoint %d to NVS: %d ms", endpoint, duration_ms);
         }
         else
         {
@@ -541,9 +566,8 @@ void relay_driver_set_pulse_duration_ms(uint16_t duration_ms)
     }
 }
 
-void relay_driver_set_pulse_duration_from_ontime(uint16_t on_time_tenth_seconds)
+void relay_driver_set_pulse_duration_from_ontime(uint8_t endpoint, uint16_t on_time_tenth_seconds)
 {
-    // OnTime is in 1/10th of a second units, convert to milliseconds
-    uint16_t duration_ms = on_time_tenth_seconds * 100;
-    relay_driver_set_pulse_duration_ms(duration_ms);
+    uint16_t duration_ms = on_time_tenth_seconds;
+    relay_driver_set_pulse_duration_ms(endpoint, duration_ms);
 }

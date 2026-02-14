@@ -74,6 +74,7 @@ extern "C"
         uint8_t endpoint;
         gpio_num_t gpio;
         TaskHandle_t pulse_task_handle;
+        uint16_t pulse_duration_ms;
     } relay_func_pair_t;
 
     // Extended config struct for On/Off Output device
@@ -135,22 +136,25 @@ extern "C"
     void relay_driver_load_settings(void);
 
     /**
-     * @brief Get the current relay pulse duration
-     * @return Pulse duration in milliseconds
+     * @brief Get the pulse duration for a specific relay endpoint
+     * @param endpoint The endpoint ID
+     * @return Pulse duration in milliseconds (or default if endpoint not found)
      */
-    uint16_t relay_driver_get_pulse_duration_ms(void);
+    uint16_t relay_driver_get_pulse_duration_ms(uint8_t endpoint);
 
     /**
-     * @brief Set the relay pulse duration
+     * @brief Set the pulse duration for a specific relay endpoint
+     * @param endpoint The endpoint ID
      * @param duration_ms Pulse duration in milliseconds (min 100, max 30000)
      */
-    void relay_driver_set_pulse_duration_ms(uint16_t duration_ms);
+    void relay_driver_set_pulse_duration_ms(uint8_t endpoint, uint16_t duration_ms);
 
     /**
      * @brief Set the relay pulse duration from Zigbee OnTime attribute
+     * @param endpoint The endpoint ID
      * @param on_time_tenth_seconds OnTime value in 1/10th of a second units
      */
-    void relay_driver_set_pulse_duration_from_ontime(uint16_t on_time_tenth_seconds);
+    void relay_driver_set_pulse_duration_from_ontime(uint8_t endpoint, uint16_t on_time_tenth_seconds);
 
 #ifdef __cplusplus
 } // extern "C"

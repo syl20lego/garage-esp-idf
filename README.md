@@ -163,3 +163,9 @@ Using UART or on MacOS
 `idf.py -p /dev/cu.usbmodem1401 erase-flash`
 `idf.py -p /dev/cu.usbmodem1401 monitor`
 
+`idf.py -p /dev/cu.usbserial-0001 flash`
+`idf.py -p /dev/cu.usbserial-0001 erase-flash`
+`idf.py -p/dev/cu.usbserial-0001 monitor`
+
+ 
+

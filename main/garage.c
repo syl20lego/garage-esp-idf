@@ -67,7 +67,7 @@ static ultrasonic_sensor_func_pair_t ultrasonic_sensor_func_pair[] = {
     {HA_ULTRASONIC_SENSOR_ENDPOINT_2, GPIO_NUM_18, GPIO_NUM_20, ESP_ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED}};
 
 static relay_func_pair_t relay_func_pair[] = {
-    {HA_RELAY_ENDPOINT, GPIO_NUM_23, NULL}};
+    {HA_RELAY_ENDPOINT, GPIO_NUM_23, NULL, 0}};
 
 static esp_err_t deferred_driver_init(void)
 {
@@ -266,10 +266,9 @@ static esp_err_t garage_set_attribute_handler(const esp_zb_zcl_set_attr_value_me
             }
             else if (message->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_TIME && message->attribute.data.type == ESP_ZB_ZCL_ATTR_TYPE_U16)
             {
-                // OnTime is in 1/10th of a second units
-                uint16_t on_time = message->attribute.data.value ? *(uint16_t *)message->attribute.data.value : 5;
-                ESP_LOGI(TAG, "Relay pulse duration set to %d (1/10s units) = %d ms via Zigbee", on_time, on_time * 100);
-                relay_driver_set_pulse_duration_from_ontime(on_time);
+                uint16_t on_time = message->attribute.data.value ? *(uint16_t *)message->attribute.data.value : 50;
+                ESP_LOGI(TAG, "Relay pulse duration set to  %d ms via Zigbee (endpoint %d)", on_time, message->info.dst_endpoint);
+                relay_driver_set_pulse_duration_from_ontime(message->info.dst_endpoint, on_time);
             }
         }
     }
