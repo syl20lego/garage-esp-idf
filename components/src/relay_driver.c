@@ -568,6 +568,13 @@ void relay_driver_set_pulse_duration_ms(uint8_t endpoint, uint16_t duration_ms)
 
 void relay_driver_set_pulse_duration_from_ontime(uint8_t endpoint, uint16_t on_time_tenth_seconds)
 {
-    uint16_t duration_ms = on_time_tenth_seconds;
+    // OnTime is in 1/10s increments (1 unit = 100ms). Clamp to uint16_t max before multiplying
+    // to prevent silent overflow (uint16_t max = 65535ms ≈ 655 units).
+    if (on_time_tenth_seconds > 655)
+    {
+        ESP_LOGW(TAG, "OnTime value %d exceeds max representable duration (655 = 65.5s), clamping", on_time_tenth_seconds);
+        on_time_tenth_seconds = 655;
+    }
+    uint16_t duration_ms = on_time_tenth_seconds * 100;
     relay_driver_set_pulse_duration_ms(endpoint, duration_ms);
 }

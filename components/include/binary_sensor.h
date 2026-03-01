@@ -72,15 +72,15 @@ extern "C"
 
     typedef void (*esp_sensor_callback_t)(sensor_func_pair_t *param);
 
-#define ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(ep, name)                        \
-    {                                                                        \
-        .basic_cfg =                                                         \
-            {                                                                \
-                .zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,   \
-                .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE, \
-            },                                                               \
-        .endpoint = ep,                                                      \
-        .sensor_name = name,                                                 \
+#define ESP_ZB_DEFAULT_BINARY_SENSOR_CONFIG(ep, name)                             \
+    {                                                                             \
+        .basic_cfg =                                                              \
+            {                                                                     \
+                .zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,        \
+                .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_MAINS_SINGLE_PHASE, \
+            },                                                                    \
+        .endpoint = ep,                                                           \
+        .sensor_name = name,                                                      \
     }
 
     // Define the config struct

@@ -57,14 +57,14 @@ extern "C"
 
     typedef void (*esp_ultrasonic_sensor_callback_t)(ultrasonic_sensor_func_pair_t *param);
 
-#define ESP_ZB_DEFAULT_ULTRASONIC_SENSOR_CONFIG(ep)                          \
-    {                                                                        \
-        .basic_cfg =                                                         \
-            {                                                                \
-                .zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,   \
-                .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE, \
-            },                                                               \
-        .endpoint = ep,                                                      \
+#define ESP_ZB_DEFAULT_ULTRASONIC_SENSOR_CONFIG(ep)                               \
+    {                                                                             \
+        .basic_cfg =                                                              \
+            {                                                                     \
+                .zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,        \
+                .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_MAINS_SINGLE_PHASE, \
+            },                                                                    \
+        .endpoint = ep,                                                           \
     }
 
     // Define the config struct

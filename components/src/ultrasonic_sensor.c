@@ -124,6 +124,11 @@ esp_zb_cluster_list_t *garage_ultrasonic_sensor_ep_create(esp_zb_ep_list_t *ep_l
     esp_zb_attribute_list_t *basic_cluster = esp_zb_basic_cluster_create(&sensor_cfg->basic_cfg);
     esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
 
+    // Identify cluster (mandatory for HA Occupancy Sensor profile)
+    esp_zb_identify_cluster_cfg_t identify_cfg = {.identify_time = ESP_ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE};
+    esp_zb_attribute_list_t *identify_cluster = esp_zb_identify_cluster_create(&identify_cfg);
+    esp_zb_cluster_list_add_identify_cluster(cluster_list, identify_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+
     /*
     https://zigbeealliance.org/wp-content/uploads/2021/10/07-5123-08-Zigbee-Cluster-Library.pdf
 
@@ -187,9 +192,10 @@ esp_zb_cluster_list_t *garage_ultrasonic_sensor_ep_create(esp_zb_ep_list_t *ep_l
         Bit1 Ultrasonic
         Bit2 Physical contact
     */
-    // Occupancy Sensor Type Bitmap attribute for Ultrasonic 0000 0010
-    // uint8_t sensor_type_bitmap = 0x02;
-    // esp_zb_occupancy_sensing_cluster_add_attr(input_cluster, ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_BITMAP_ID, &sensor_type_bitmap);
+    // Occupancy Sensor Type Bitmap attribute (map8, 0x0002) - mandatory per ZCL rev3+
+    // 0x02 = bit1 set = Ultrasonic
+    uint8_t sensor_type_bitmap = 0x02;
+    esp_zb_occupancy_sensing_cluster_add_attr(input_cluster, ESP_ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_BITMAP_ID, &sensor_type_bitmap);
 
     /*
     4.8.2.2.3 Ultrasonic Configuration Set

@@ -56,7 +56,7 @@ extern "C"
         .basic_cfg =                                                              \
             {                                                                     \
                 .zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE,        \
-                .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_DEFAULT_VALUE,      \
+                .power_source = ESP_ZB_ZCL_BASIC_POWER_SOURCE_MAINS_SINGLE_PHASE, \
             },                                                                    \
         .identify_cfg =                                                           \
             {                                                                     \
